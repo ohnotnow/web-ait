@@ -8,6 +8,7 @@ let preferredPort = 6174;
 let portExplicit = false;
 let pollInterval = 3;
 let aitPath = "ait";
+let hostname = "0.0.0.0";
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i]!;
@@ -18,6 +19,8 @@ for (let i = 0; i < args.length; i++) {
     pollInterval = parseInt(args[++i]!, 10);
   } else if (arg === "--ait-path") {
     aitPath = args[++i]!;
+  } else if (arg === "--localhost") {
+    hostname = "127.0.0.1";
   } else if (!arg.startsWith("--")) {
     projectPath = arg;
   }
@@ -137,6 +140,7 @@ const port = await findPort();
 
 const server = Bun.serve({
   port,
+  hostname,
   idleTimeout: 255, // max value — SSE connections are long-lived
   async fetch(req) {
     const url = new URL(req.url);
@@ -168,4 +172,4 @@ await poll();
 // Poll loop
 setInterval(poll, pollInterval * 1000);
 
-console.log(`ait-web listening on http://localhost:${port} for ${projectPath}`);
+console.log(`ait-web listening on http://${hostname}:${port} for ${projectPath}`);
