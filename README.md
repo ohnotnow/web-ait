@@ -2,6 +2,8 @@
 
 A web dashboard for [ait](https://github.com/ohnotnow/ait) (Agent Issue Tracker). It polls your local ait database and streams updates to the browser via Server-Sent Events so you can see what your coding agents are up to.
 
+![Screenshot](screenshot.png)
+
 ## What it does
 
 - Displays epics as columns with their child tasks listed vertically
