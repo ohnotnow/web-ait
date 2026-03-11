@@ -1,8 +1,12 @@
 {
   "name": "web-ait",
-  "module": "index.ts",
+  "module": "server.ts",
   "type": "module",
   "private": true,
+  "scripts": {
+    "dev": "bun --hot server.ts",
+    "start": "bun server.ts"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
