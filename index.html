@@ -335,6 +335,117 @@
       50% { opacity: 0.2; }
     }
 
+    /* ── Collapsed completed columns ── */
+    .column.collapsed {
+      flex: 0 0 48px;
+      min-width: 48px;
+      max-width: 48px;
+      cursor: pointer;
+      transition: flex 0.4s ease, min-width 0.4s ease, max-width 0.4s ease;
+    }
+
+    .column.collapsed .column-tasks {
+      opacity: 0;
+      height: 0;
+      overflow: hidden;
+      padding: 0;
+      transition: opacity 0.3s ease;
+    }
+
+    .column.collapsed .column-header {
+      writing-mode: vertical-lr;
+      text-orientation: mixed;
+      padding: 0.6rem 0.3rem;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      height: 100%;
+      justify-content: flex-start;
+    }
+
+    .column.collapsed .column-title {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-height: 60%;
+    }
+
+    .column.collapsed .column-priority {
+      writing-mode: horizontal-tb;
+    }
+
+    .column.collapsed .column-count {
+      writing-mode: horizontal-tb;
+    }
+
+    /* Expand on hover */
+    .column.collapsed:hover {
+      flex: 0 0 260px;
+      min-width: 260px;
+      max-width: 260px;
+    }
+
+    .column.collapsed:hover .column-tasks {
+      opacity: 1;
+      height: auto;
+      padding: 0.35rem 0;
+      overflow-y: auto;
+    }
+
+    .column.collapsed:hover .column-header {
+      writing-mode: horizontal-tb;
+      text-orientation: initial;
+      padding: 0.5rem 0.75rem;
+      flex-direction: row;
+      height: auto;
+    }
+
+    .column.collapsed:hover .column-title {
+      max-height: none;
+    }
+
+    /* Transition for non-collapsed columns */
+    .column {
+      transition: flex 0.4s ease, min-width 0.4s ease, max-width 0.4s ease, order 0.4s ease;
+    }
+
+    /* ── All-clear state ── */
+    .all-clear {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex: 1;
+      gap: 1.25rem;
+      color: var(--text);
+    }
+
+    .all-clear.visible {
+      display: flex;
+    }
+
+    .all-clear-dot {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--status-closed);
+      box-shadow: 0 0 20px rgba(76, 174, 106, 0.35);
+    }
+
+    .all-clear-text {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 1.6rem;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      color: var(--status-closed);
+    }
+
+    .all-clear-counts {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
     /* ── Empty state ── */
     .empty {
       padding: 1rem 0.75rem;
@@ -373,6 +484,11 @@
     <span class="header-status" id="status-dot"></span>
   </div>
   <div class="board" id="board"></div>
+  <div class="all-clear" id="all-clear">
+    <span class="all-clear-dot"></span>
+    <span class="all-clear-text">all clear</span>
+    <span class="all-clear-counts" id="all-clear-counts"></span>
+  </div>
   <div class="reconnecting" id="reconnecting">reconnecting&hellip;</div>
 
   <script>
@@ -382,6 +498,11 @@
     const boardEl = document.getElementById("board");
     const statusDot = document.getElementById("status-dot");
     const reconnectEl = document.getElementById("reconnecting");
+    const allClearEl = document.getElementById("all-clear");
+    const allClearCountsEl = document.getElementById("all-clear-counts");
+
+    // Track which columns have been manually expanded (pinned open)
+    const pinnedColumns = new Set();
 
     const STATUS_ICON = {
       open: "○",
@@ -458,16 +579,46 @@
       standalone.sort(sortFn);
       for (const [, children] of byParent) children.sort(sortFn);
 
-      // Build column data
-      const columns = [];
+      // Build column data — separate active from completed
+      const activeColumns = [];
+      const completedColumns = [];
+
       for (const epic of epics) {
-        columns.push({ epic, children: byParent.get(epic.id) || [] });
+        const children = byParent.get(epic.id) || [];
+        const allDone = children.length > 0 && children.every(t => t.status === "closed" || t.status === "cancelled");
+        const isCompleted = epic.status === "closed" || epic.status === "cancelled" || allDone;
+        const entry = { epic, children, completed: isCompleted };
+        if (isCompleted) {
+          completedColumns.push(entry);
+        } else {
+          activeColumns.push(entry);
+        }
       }
+
       if (standalone.length) {
-        columns.push({
+        activeColumns.push({
           epic: { title: "Standalone", status: "open", priority: null, id: "_standalone" },
           children: standalone,
+          completed: false,
         });
+      }
+
+      // Active first, then completed (sorted to the right)
+      const columns = [...activeColumns, ...completedColumns];
+
+      // All-clear state: no active columns and no standalone tasks
+      const allClear = activeColumns.length === 0 && standalone.length === 0 && epics.length > 0;
+      if (allClear) {
+        boardEl.style.display = "none";
+        allClearEl.classList.add("visible");
+        const total = issues.length;
+        const closed = issues.filter(i => i.status === "closed").length;
+        const cancelled = issues.filter(i => i.status === "cancelled").length;
+        allClearCountsEl.textContent = `${closed} closed · ${cancelled} cancelled · ${total} total`;
+        return;
+      } else {
+        boardEl.style.display = "";
+        allClearEl.classList.remove("visible");
       }
 
       // Reconcile columns
@@ -486,13 +637,19 @@
 
       // Update or create columns
       let prevCol = null;
-      for (const { epic, children } of columns) {
+      for (const { epic, children, completed } of columns) {
         let col = existingById.get(epic.id);
         if (col) {
           updateColumn(col, epic, children);
         } else {
           col = createColumn(epic, children);
           boardEl.appendChild(col);
+        }
+        // Collapse/expand completed columns
+        if (completed && !pinnedColumns.has(epic.id)) {
+          col.classList.add("collapsed");
+        } else {
+          col.classList.remove("collapsed");
         }
         // Ensure order
         if (prevCol && prevCol.nextElementSibling !== col) {
@@ -506,6 +663,17 @@
       const col = document.createElement("div");
       col.className = "column";
       col.dataset.id = epic.id;
+
+      // Click to toggle pin on collapsed columns
+      col.addEventListener("click", () => {
+        if (col.classList.contains("collapsed")) {
+          pinnedColumns.add(epic.id);
+          col.classList.remove("collapsed");
+        } else if (pinnedColumns.has(epic.id)) {
+          pinnedColumns.delete(epic.id);
+          col.classList.add("collapsed");
+        }
+      });
 
       const header = document.createElement("div");
       header.className = "column-header" + (epic.status === "closed" ? " column-header-closed" : "");
