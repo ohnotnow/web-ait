@@ -306,6 +306,27 @@
     .task-closed { opacity: 0.4; }
     .task-cancelled { opacity: 0.3; text-decoration: line-through; }
 
+    /* Sub-group tasks (tasks with children, e.g. phase tasks) */
+    .task-group {
+      font-weight: 500;
+      margin-top: 0.25rem;
+      padding-top: 0.35rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .task-group:first-child {
+      margin-top: 0;
+      padding-top: 0;
+      border-top: none;
+    }
+
+    .task-group-count {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.55rem;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
     /* ── Transitions ── */
     .task, .task-claimed {
       transition: opacity 0.6s ease, background 0.15s ease;
@@ -557,34 +578,76 @@
         .map(([key, label]) => `<span class="count-pill count-${key}">${label} ${counts[key] ?? 0}</span>`)
         .join("");
 
-      // Group
-      const epics = issues.filter(i => i.type === "epic");
-      const tasks = issues.filter(i => i.type === "task");
-      const byParent = new Map();
-      const standalone = [];
+      // Group — build a tree that supports arbitrary nesting
+      const issueMap = new Map();
+      for (const i of issues) issueMap.set(i.id, i);
 
-      for (const t of tasks) {
-        if (t.parent_id && epics.some(e => e.id === t.parent_id)) {
-          if (!byParent.has(t.parent_id)) byParent.set(t.parent_id, []);
-          byParent.get(t.parent_id).push(t);
-        } else {
-          standalone.push(t);
+      // Map each parent to its direct children
+      const childrenOf = new Map();
+      for (const i of issues) {
+        if (i.parent_id) {
+          if (!childrenOf.has(i.parent_id)) childrenOf.set(i.parent_id, []);
+          childrenOf.get(i.parent_id).push(i);
         }
       }
 
       const sortFn = (a, b) =>
         (a.priority || "P4").localeCompare(b.priority || "P4") ||
         a.created_at.localeCompare(b.created_at);
+
+      // Flatten a subtree into an ordered list with depth/grouping metadata
+      function flattenChildren(parentId, depth) {
+        const kids = childrenOf.get(parentId) || [];
+        kids.sort(sortFn);
+        const result = [];
+        for (const kid of kids) {
+          const descendants = flattenChildren(kid.id, depth + 1);
+          kid._depth = depth;
+          kid._hasChildren = descendants.length > 0;
+          if (kid._hasChildren) {
+            kid._childCount = descendants.length;
+            kid._doneCount = descendants.filter(t => t.status === "closed" || t.status === "cancelled").length;
+          }
+          result.push(kid);
+          result.push(...descendants);
+        }
+        return result;
+      }
+
+      // Walk up parent chain to find root epic
+      function findRootEpic(issue) {
+        let current = issue;
+        const visited = new Set();
+        while (current.parent_id && !visited.has(current.parent_id)) {
+          visited.add(current.parent_id);
+          const parent = issueMap.get(current.parent_id);
+          if (!parent) return null;
+          if (parent.type === "epic") return parent;
+          current = parent;
+        }
+        return null;
+      }
+
+      const epics = issues.filter(i => i.type === "epic");
       epics.sort(sortFn);
+
+      // Find orphan tasks (no epic ancestor)
+      const standalone = [];
+      for (const i of issues) {
+        if (i.type === "task" && !findRootEpic(i)) {
+          i._depth = 0;
+          i._hasChildren = false;
+          standalone.push(i);
+        }
+      }
       standalone.sort(sortFn);
-      for (const [, children] of byParent) children.sort(sortFn);
 
       // Build column data — separate active from completed
       const activeColumns = [];
       const completedColumns = [];
 
       for (const epic of epics) {
-        const children = byParent.get(epic.id) || [];
+        const children = flattenChildren(epic.id, 0);
         const allDone = children.length > 0 && children.every(t => t.status === "closed" || t.status === "cancelled");
         const isCompleted = epic.status === "closed" || epic.status === "cancelled" || allDone;
         const entry = { epic, children, completed: isCompleted };
@@ -802,7 +865,12 @@
       const div = document.createElement("div");
       div.dataset.taskId = t.id;
       const dimClass = t.status === "closed" ? " task-closed" : t.status === "cancelled" ? " task-cancelled" : "";
-      div.className = "task" + dimClass;
+      const groupClass = t._hasChildren ? " task-group" : "";
+      div.className = "task" + dimClass + groupClass;
+
+      // Indent based on nesting depth
+      const depth = t._depth || 0;
+      div.style.paddingLeft = `${0.75 + depth * 1}rem`;
 
       const statusSpan = document.createElement("span");
       statusSpan.className = `task-status s-${t.status}`;
@@ -820,6 +888,14 @@
         prSpan.className = `task-priority pr-${t.priority}`;
         prSpan.textContent = t.priority;
         div.appendChild(prSpan);
+      }
+
+      // Show progress count for group tasks (e.g. phase tasks)
+      if (t._hasChildren) {
+        const countSpan = document.createElement("span");
+        countSpan.className = "task-group-count";
+        countSpan.textContent = `${t._doneCount}/${t._childCount}`;
+        div.appendChild(countSpan);
       }
 
       wrapper.appendChild(div);
@@ -840,21 +916,41 @@
       container.appendChild(el);
       // Claimed span is in the fragment, already appended
       if (t.claimed_by) {
+        const depth = t._depth || 0;
         const claimed = document.createElement("span");
         claimed.className = "task-claimed";
         claimed.dataset.claimedFor = t.id;
         claimed.textContent = `↳ ${t.claimed_by}`;
+        claimed.style.paddingLeft = `${1.85 + depth * 1}rem`;
         container.appendChild(claimed);
       }
     }
 
     function updateTask(el, t) {
       const dimClass = t.status === "closed" ? " task-closed" : t.status === "cancelled" ? " task-cancelled" : "";
-      el.className = "task" + dimClass;
+      const groupClass = t._hasChildren ? " task-group" : "";
+      el.className = "task" + dimClass + groupClass;
+
+      // Update indentation
+      const depth = t._depth || 0;
+      el.style.paddingLeft = `${0.75 + depth * 1}rem`;
 
       const statusSpan = el.querySelector(".task-status");
       statusSpan.className = `task-status s-${t.status}`;
       statusSpan.textContent = STATUS_ICON[t.status] || "○";
+
+      // Update group count badge
+      let groupCount = el.querySelector(".task-group-count");
+      if (t._hasChildren) {
+        if (!groupCount) {
+          groupCount = document.createElement("span");
+          groupCount.className = "task-group-count";
+          el.appendChild(groupCount);
+        }
+        groupCount.textContent = `${t._doneCount}/${t._childCount}`;
+      } else if (groupCount) {
+        groupCount.remove();
+      }
 
       // Update claimed span
       const parent = el.parentElement;
@@ -867,6 +963,7 @@
           el.after(claimedEl);
         }
         claimedEl.textContent = `↳ ${t.claimed_by}`;
+        claimedEl.style.paddingLeft = `${1.85 + depth * 1}rem`;
       } else if (claimedEl) {
         claimedEl.remove();
       }
