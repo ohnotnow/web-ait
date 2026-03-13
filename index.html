@@ -631,6 +631,132 @@
     }
 
     .reconnecting.visible { display: block; }
+
+    /* ── Summary hero strip ── */
+    .summary-bar {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      padding: 0.5rem 1rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .summary-stats {
+      display: flex;
+      gap: 1.5rem;
+      flex-shrink: 0;
+    }
+
+    .summary-stat {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 1.8rem;
+      font-weight: 600;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .summary-stat-label {
+      font-family: 'IBM Plex Sans', sans-serif;
+      font-size: 0.65rem;
+      font-weight: 400;
+      color: var(--text-muted);
+      display: block;
+      margin-top: 0.15rem;
+    }
+
+    .summary-stat-progress { color: var(--status-progress); }
+    .summary-stat-p0 { color: var(--p0); }
+    .summary-stat-done { color: var(--status-closed); }
+
+    .summary-stat-p0.has-p0 {
+      background: rgba(224,85,85,0.12);
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      animation: p0-pulse 2.5s ease-in-out infinite;
+    }
+
+    @keyframes p0-pulse {
+      0%, 100% { background: rgba(224,85,85,0.12); }
+      50% { background: rgba(224,85,85,0.25); }
+    }
+
+    .summary-progress {
+      flex: 1;
+      height: 6px;
+      border-radius: 3px;
+      overflow: hidden;
+      display: flex;
+      background: var(--border);
+    }
+
+    .summary-progress-seg {
+      height: 100%;
+      transition: width 0.6s ease;
+    }
+
+    .summary-progress-done { background: var(--status-closed); }
+    .summary-progress-wip { background: var(--status-progress); }
+    .summary-progress-open { background: var(--status-open); opacity: 0.3; }
+
+    /* ── Mini progress bars (column + group headers) ── */
+    .mini-progress {
+      display: inline-flex;
+      width: 40px;
+      height: 3px;
+      border-radius: 1.5px;
+      overflow: hidden;
+      background: var(--border);
+      flex-shrink: 0;
+      vertical-align: middle;
+    }
+
+    .mini-progress-seg {
+      height: 100%;
+    }
+
+    .mini-progress-done { background: var(--status-closed); }
+    .mini-progress-wip { background: var(--status-progress); }
+    .mini-progress-open { background: var(--status-open); opacity: 0.3; }
+
+    /* ── P0 task attention pulse ── */
+    @keyframes attention-pulse {
+      0%, 100% { box-shadow: inset 3px 0 0 var(--p0); }
+      50% { box-shadow: inset 3px 0 0 transparent; }
+    }
+    .task-attention { animation: attention-pulse 2.5s ease-in-out infinite; }
+
+    /* ── Focus mode ── */
+    .focus-btn {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.65rem;
+      font-weight: 600;
+      padding: 0.15rem 0.45rem;
+      border-radius: 3px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      white-space: nowrap;
+      letter-spacing: 0.02em;
+    }
+
+    .focus-btn:hover { background: var(--surface-hover); }
+
+    .focus-btn.active {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: rgba(91,138,240,0.10);
+    }
+
+    body.focus-active .task-closed,
+    body.focus-active .task-cancelled { display: none; }
+    /* Hide claimed spans that follow closed/cancelled tasks */
+    body.focus-active .task-closed + .task-claimed,
+    body.focus-active .task-cancelled + .task-claimed { display: none; }
+    body.focus-active .column.collapsed,
+    body.focus-active .column-group.collapsed { display: none; }
   </style>
 </head>
 <body>
@@ -640,9 +766,14 @@
     <span class="header-project" id="project">—</span>
     <span class="header-sep"></span>
     <div class="counts" id="counts"></div>
+    <button class="focus-btn" id="focus-btn" title="Hide completed tasks and columns">focus</button>
     <span class="header-spacer"></span>
     <span class="header-time" id="time">—</span>
     <span class="header-status" id="status-dot"></span>
+  </div>
+  <div class="summary-bar" id="summary-bar">
+    <div class="summary-stats" id="summary-stats"></div>
+    <div class="summary-progress" id="summary-progress"></div>
   </div>
   <div class="board" id="board"></div>
   <div class="all-clear" id="all-clear">
@@ -661,9 +792,21 @@
     const reconnectEl = document.getElementById("reconnecting");
     const allClearEl = document.getElementById("all-clear");
     const allClearCountsEl = document.getElementById("all-clear-counts");
+    const summaryBarEl = document.getElementById("summary-bar");
+    const summaryStatsEl = document.getElementById("summary-stats");
+    const summaryProgressEl = document.getElementById("summary-progress");
+    const focusBtnEl = document.getElementById("focus-btn");
 
     // Track which columns have been manually expanded (pinned open)
     const pinnedColumns = new Set();
+
+    // Focus mode
+    let focusMode = false;
+    focusBtnEl.addEventListener("click", () => {
+      focusMode = !focusMode;
+      document.body.classList.toggle("focus-active", focusMode);
+      focusBtnEl.classList.toggle("active", focusMode);
+    });
 
     const STATUS_ICON = {
       open: "○",
@@ -717,6 +860,34 @@
       countsEl.innerHTML = countMap
         .map(([key, label]) => `<span class="count-pill count-${key}">${label} ${counts[key] ?? 0}</span>`)
         .join("");
+
+      // ── Summary hero strip ──
+      const allTasks = issues.filter(i => i.type === "task");
+      const totalTasks = allTasks.length;
+      const doneTasks = allTasks.filter(t => t.status === "closed" || t.status === "cancelled").length;
+      const wipTasks = allTasks.filter(t => t.status === "in_progress").length;
+      const openTasks = totalTasks - doneTasks - wipTasks;
+      const p0Urgent = allTasks.filter(t => t.priority === "P0" && (t.status === "open" || t.status === "in_progress")).length;
+
+      if (focusMode) {
+        const remaining = totalTasks - doneTasks;
+        summaryStatsEl.innerHTML =
+          `<div class="summary-stat summary-stat-progress">${remaining}<span class="summary-stat-label">remaining</span></div>`;
+      } else {
+        summaryStatsEl.innerHTML =
+          `<div class="summary-stat summary-stat-progress">${wipTasks}<span class="summary-stat-label">in progress</span></div>` +
+          `<div class="summary-stat summary-stat-p0${p0Urgent > 0 ? ' has-p0' : ''}">${p0Urgent}<span class="summary-stat-label">blocked P0</span></div>` +
+          `<div class="summary-stat summary-stat-done">${doneTasks}<span class="summary-stat-label">done</span></div>`;
+      }
+
+      // Stacked progress bar
+      const pctDone = totalTasks ? (doneTasks / totalTasks * 100) : 0;
+      const pctWip = totalTasks ? (wipTasks / totalTasks * 100) : 0;
+      const pctOpen = totalTasks ? (openTasks / totalTasks * 100) : 0;
+      summaryProgressEl.innerHTML =
+        `<div class="summary-progress-seg summary-progress-done" style="width:${pctDone}%"></div>` +
+        `<div class="summary-progress-seg summary-progress-wip" style="width:${pctWip}%"></div>` +
+        `<div class="summary-progress-seg summary-progress-open" style="width:${pctOpen}%"></div>`;
 
       // Group — build a tree that supports arbitrary nesting
       const issueMap = new Map();
@@ -847,6 +1018,7 @@
       const allClear = activeColumns.length === 0 && standalone.length === 0 && epics.length > 0;
       if (allClear) {
         boardEl.style.display = "none";
+        summaryBarEl.style.display = "none";
         allClearEl.classList.add("visible");
         const total = issues.length;
         const closed = issues.filter(i => i.status === "closed").length;
@@ -855,6 +1027,7 @@
         return;
       } else {
         boardEl.style.display = "";
+        summaryBarEl.style.display = "";
         allClearEl.classList.remove("visible");
       }
 
@@ -911,6 +1084,35 @@
       }
     }
 
+    // ── Helpers for mini progress bars and header tinting ──
+    function buildMiniProgress(tasks) {
+      const total = tasks.length;
+      if (!total) return null;
+      const done = tasks.filter(t => t.status === "closed" || t.status === "cancelled").length;
+      const wip = tasks.filter(t => t.status === "in_progress").length;
+      const open = total - done - wip;
+
+      const bar = document.createElement("span");
+      bar.className = "mini-progress";
+      bar.innerHTML =
+        `<span class="mini-progress-seg mini-progress-done" style="width:${done/total*100}%"></span>` +
+        `<span class="mini-progress-seg mini-progress-wip" style="width:${wip/total*100}%"></span>` +
+        `<span class="mini-progress-seg mini-progress-open" style="width:${open/total*100}%"></span>`;
+      return bar;
+    }
+
+    function headerTint(tasks) {
+      const total = tasks.length;
+      if (!total) return "";
+      const done = tasks.filter(t => t.status === "closed" || t.status === "cancelled").length;
+      const hasP0 = tasks.some(t => t.priority === "P0" && (t.status === "open" || t.status === "in_progress"));
+      const hasWip = tasks.some(t => t.status === "in_progress");
+      if (done === total) return "rgba(76,174,106,0.08)";
+      if (hasP0) return "rgba(224,85,85,0.08)";
+      if (hasWip) return "rgba(91,138,240,0.08)";
+      return "";
+    }
+
     function createColumn(epic, children) {
       const col = document.createElement("div");
       col.className = "column";
@@ -955,6 +1157,12 @@
       countSpan.textContent = `${doneCount}/${children.length}`;
       header.appendChild(countSpan);
 
+      const miniBar = buildMiniProgress(children);
+      if (miniBar) header.appendChild(miniBar);
+
+      const tint = headerTint(children);
+      if (tint) header.style.background = tint;
+
       col.appendChild(header);
 
       const tasksDiv = document.createElement("div");
@@ -985,6 +1193,17 @@
       const countSpan = header.querySelector(".column-count");
       const doneCount = children.filter(t => t.status === "closed" || t.status === "cancelled").length;
       countSpan.textContent = `${doneCount}/${children.length}`;
+
+      // Update mini progress bar
+      const oldMini = header.querySelector(".mini-progress");
+      const newMini = buildMiniProgress(children);
+      if (oldMini && newMini) oldMini.replaceWith(newMini);
+      else if (newMini) header.appendChild(newMini);
+      else if (oldMini) oldMini.remove();
+
+      // Update header tint
+      const tint = headerTint(children);
+      header.style.background = tint || "";
 
       // Reconcile tasks
       const tasksDiv = col.querySelector(".column-tasks");
@@ -1089,10 +1308,16 @@
 
       const countSpan = document.createElement("span");
       countSpan.className = "group-count";
-      const allTasks = subColumns.flatMap(sc => sc.children);
-      const doneCount = allTasks.filter(t => t.status === "closed" || t.status === "cancelled").length;
-      countSpan.textContent = `${doneCount}/${allTasks.length}`;
+      const allGroupTasks = subColumns.flatMap(sc => sc.children);
+      const doneCount = allGroupTasks.filter(t => t.status === "closed" || t.status === "cancelled").length;
+      countSpan.textContent = `${doneCount}/${allGroupTasks.length}`;
       header.appendChild(countSpan);
+
+      const miniBar = buildMiniProgress(allGroupTasks);
+      if (miniBar) header.appendChild(miniBar);
+
+      const tint = headerTint(allGroupTasks);
+      if (tint) header.style.background = tint;
 
       group.appendChild(header);
 
@@ -1121,9 +1346,20 @@
       statusSpan.textContent = STATUS_ICON[epic.status] || "○";
 
       const countSpan = header.querySelector(".group-count");
-      const allTasks = subColumns.flatMap(sc => sc.children);
-      const doneCount = allTasks.filter(t => t.status === "closed" || t.status === "cancelled").length;
-      countSpan.textContent = `${doneCount}/${allTasks.length}`;
+      const allGroupTasks = subColumns.flatMap(sc => sc.children);
+      const doneCount = allGroupTasks.filter(t => t.status === "closed" || t.status === "cancelled").length;
+      countSpan.textContent = `${doneCount}/${allGroupTasks.length}`;
+
+      // Update mini progress bar
+      const oldMini = header.querySelector(".mini-progress");
+      const newMini = buildMiniProgress(allGroupTasks);
+      if (oldMini && newMini) oldMini.replaceWith(newMini);
+      else if (newMini) header.appendChild(newMini);
+      else if (oldMini) oldMini.remove();
+
+      // Update header tint
+      const tint = headerTint(allGroupTasks);
+      header.style.background = tint || "";
 
       // Reconcile sub-columns
       const columnsDiv = group.querySelector(":scope > .group-columns");
@@ -1162,7 +1398,8 @@
       div.dataset.taskId = t.id;
       const dimClass = t.status === "closed" ? " task-closed" : t.status === "cancelled" ? " task-cancelled" : "";
       const groupClass = t._hasChildren ? " task-group" : "";
-      div.className = "task" + dimClass + groupClass;
+      const attentionClass = (t.priority === "P0" && (t.status === "open" || t.status === "in_progress")) ? " task-attention" : "";
+      div.className = "task" + dimClass + groupClass + attentionClass;
 
       // Indent based on nesting depth
       const depth = t._depth || 0;
@@ -1225,7 +1462,8 @@
     function updateTask(el, t) {
       const dimClass = t.status === "closed" ? " task-closed" : t.status === "cancelled" ? " task-cancelled" : "";
       const groupClass = t._hasChildren ? " task-group" : "";
-      el.className = "task" + dimClass + groupClass;
+      const attentionClass = (t.priority === "P0" && (t.status === "open" || t.status === "in_progress")) ? " task-attention" : "";
+      el.className = "task" + dimClass + groupClass + attentionClass;
 
       // Update indentation
       const depth = t._depth || 0;
