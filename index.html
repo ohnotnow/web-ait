@@ -714,13 +714,13 @@
       align-items: baseline;
       gap: 0.4rem;
       font-family: 'IBM Plex Mono', monospace;
-      font-size: 1.8rem;
+      font-size: 4.7rem;
       font-weight: 600;
       padding: 0.5rem 1rem;
       border-radius: 4px;
-      border: 2px solid var(--border);
-      background: transparent;
-      color: var(--text-dim);
+      border: none;
+      background: var(--header-bg);
+      color: var(--text-muted);
       cursor: pointer;
       white-space: nowrap;
       transition: all 0.2s ease;
@@ -728,13 +728,12 @@
 
     .focus-btn:hover {
       background: var(--surface-hover);
-      border-color: var(--text-muted);
+      color: var(--text);
     }
 
     .focus-btn.active {
       color: var(--accent);
-      border-color: var(--accent);
-      background: rgba(91,138,240,0.12);
+      background: rgba(91,138,240,0.15);
     }
 
     body.focus-active .task-closed,
