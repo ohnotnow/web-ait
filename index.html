@@ -430,6 +430,146 @@
       transition: flex 0.4s ease, min-width 0.4s ease, max-width 0.4s ease, order 0.4s ease;
     }
 
+    /* ── Column groups (epics whose children have children) ── */
+    .column-group {
+      display: flex;
+      flex-direction: column;
+      border-right: 1px solid var(--border);
+      overflow: hidden;
+      transition: flex 0.4s ease, min-width 0.4s ease, max-width 0.4s ease;
+    }
+
+    .column-group:last-child {
+      border-right: none;
+    }
+
+    .group-header {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.3rem 0.75rem;
+      background: var(--header-bg);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      min-height: 1.8rem;
+    }
+
+    .group-header-closed { opacity: 0.4; }
+
+    .group-status {
+      font-size: 0.7rem;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .group-title {
+      font-weight: 600;
+      font-size: 0.7rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+      min-width: 0;
+      color: var(--accent);
+    }
+
+    .group-priority {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.6rem;
+      font-weight: 600;
+      padding: 0.1rem 0.3rem;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    .group-count {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.6rem;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    .group-columns {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .group-columns > .column {
+      min-width: 180px;
+      max-width: none;
+      border-right: 1px solid var(--border);
+    }
+
+    .group-columns > .column:last-child {
+      border-right: none;
+    }
+
+    /* Collapsed group */
+    .column-group.collapsed {
+      flex: 0 0 48px;
+      min-width: 48px;
+      max-width: 48px;
+      cursor: pointer;
+    }
+
+    .column-group.collapsed .group-columns {
+      opacity: 0;
+      height: 0;
+      overflow: hidden;
+      transition: opacity 0.3s ease;
+    }
+
+    .column-group.collapsed .group-header {
+      writing-mode: vertical-lr;
+      text-orientation: mixed;
+      padding: 0.6rem 0.3rem;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      height: 100%;
+      justify-content: flex-start;
+    }
+
+    .column-group.collapsed .group-title {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-height: 60%;
+    }
+
+    .column-group.collapsed .group-priority {
+      writing-mode: horizontal-tb;
+    }
+
+    .column-group.collapsed .group-count {
+      writing-mode: horizontal-tb;
+    }
+
+    /* Expand group on hover */
+    .column-group.collapsed:hover {
+      flex: 0 0 600px;
+      min-width: 600px;
+      max-width: 80vw;
+    }
+
+    .column-group.collapsed:hover .group-columns {
+      opacity: 1;
+      height: auto;
+    }
+
+    .column-group.collapsed:hover .group-header {
+      writing-mode: horizontal-tb;
+      text-orientation: initial;
+      padding: 0.3rem 0.75rem;
+      flex-direction: row;
+      height: auto;
+    }
+
+    .column-group.collapsed:hover .group-title {
+      max-height: none;
+    }
+
     /* ── All-clear state ── */
     .all-clear {
       display: none;
@@ -647,14 +787,47 @@
       const completedColumns = [];
 
       for (const epic of epics) {
-        const children = flattenChildren(epic.id, 0);
-        const allDone = children.length > 0 && children.every(t => t.status === "closed" || t.status === "cancelled");
-        const isCompleted = epic.status === "closed" || epic.status === "cancelled" || allDone;
-        const entry = { epic, children, completed: isCompleted };
-        if (isCompleted) {
-          completedColumns.push(entry);
+        const directKids = (childrenOf.get(epic.id) || []).slice().sort(sortFn);
+        const hasSubGroups = directKids.some(k => (childrenOf.get(k.id) || []).length > 0);
+
+        if (hasSubGroups) {
+          // Grouped layout — each child-with-children becomes a sub-column
+          const subColumns = [];
+          const leafTasks = [];
+
+          for (const kid of directKids) {
+            const grandchildren = flattenChildren(kid.id, 0);
+            if (grandchildren.length > 0) {
+              subColumns.push({ issue: kid, children: grandchildren });
+            } else {
+              kid._depth = 0;
+              kid._hasChildren = false;
+              leafTasks.push(kid);
+            }
+          }
+
+          if (leafTasks.length) {
+            subColumns.unshift({
+              issue: { title: "General", status: "open", priority: null, id: epic.id + "_general" },
+              children: leafTasks,
+            });
+          }
+
+          const allTasks = subColumns.flatMap(sc => sc.children);
+          const allDone = allTasks.length > 0 && allTasks.every(t => t.status === "closed" || t.status === "cancelled");
+          const isCompleted = epic.status === "closed" || epic.status === "cancelled" || allDone;
+
+          const entry = { epic, subColumns, grouped: true, completed: isCompleted };
+          if (isCompleted) completedColumns.push(entry);
+          else activeColumns.push(entry);
         } else {
-          activeColumns.push(entry);
+          // Single column — same as before
+          const children = flattenChildren(epic.id, 0);
+          const allDone = children.length > 0 && children.every(t => t.status === "closed" || t.status === "cancelled");
+          const isCompleted = epic.status === "closed" || epic.status === "cancelled" || allDone;
+          const entry = { epic, children, grouped: false, completed: isCompleted };
+          if (isCompleted) completedColumns.push(entry);
+          else activeColumns.push(entry);
         }
       }
 
@@ -662,6 +835,7 @@
         activeColumns.push({
           epic: { title: "Standalone", status: "open", priority: null, id: "_standalone" },
           children: standalone,
+          grouped: false,
           completed: false,
         });
       }
@@ -684,41 +858,56 @@
         allClearEl.classList.remove("visible");
       }
 
-      // Reconcile columns
-      const existingCols = boardEl.querySelectorAll(".column");
+      // Reconcile board children (columns and groups)
+      const existingEls = boardEl.querySelectorAll(":scope > .column, :scope > .column-group");
       const existingById = new Map();
-      for (const col of existingCols) {
-        existingById.set(col.dataset.id, col);
+      for (const el of existingEls) {
+        existingById.set(el.dataset.id, el);
       }
 
       const newIds = new Set(columns.map(c => c.epic.id));
 
-      // Remove columns that no longer exist
-      for (const col of existingCols) {
-        if (!newIds.has(col.dataset.id)) col.remove();
+      // Remove elements that no longer exist
+      for (const el of existingEls) {
+        if (!newIds.has(el.dataset.id)) el.remove();
       }
 
-      // Update or create columns
-      let prevCol = null;
-      for (const { epic, children, completed } of columns) {
-        let col = existingById.get(epic.id);
-        if (col) {
-          updateColumn(col, epic, children);
+      // Update or create
+      let prevEl = null;
+      for (const entry of columns) {
+        const { epic, completed } = entry;
+        let el = existingById.get(epic.id);
+
+        if (entry.grouped) {
+          if (el && el.classList.contains("column-group")) {
+            updateGroup(el, epic, entry.subColumns);
+          } else {
+            if (el) el.remove();
+            el = createGroup(epic, entry.subColumns);
+            boardEl.appendChild(el);
+          }
         } else {
-          col = createColumn(epic, children);
-          boardEl.appendChild(col);
+          if (el && !el.classList.contains("column-group")) {
+            updateColumn(el, epic, entry.children);
+          } else {
+            if (el) el.remove();
+            el = createColumn(epic, entry.children);
+            boardEl.appendChild(el);
+          }
         }
-        // Collapse/expand completed columns
+
+        // Collapse/expand completed entries
         if (completed && !pinnedColumns.has(epic.id)) {
-          col.classList.add("collapsed");
+          el.classList.add("collapsed");
         } else {
-          col.classList.remove("collapsed");
+          el.classList.remove("collapsed");
         }
+
         // Ensure order
-        if (prevCol && prevCol.nextElementSibling !== col) {
-          prevCol.after(col);
+        if (prevEl && prevEl.nextElementSibling !== el) {
+          prevEl.after(el);
         }
-        prevCol = col;
+        prevEl = el;
       }
     }
 
@@ -856,6 +1045,113 @@
         empty.className = "empty";
         empty.textContent = "no tasks";
         tasksDiv.appendChild(empty);
+      }
+    }
+
+    function createGroup(epic, subColumns) {
+      const group = document.createElement("div");
+      group.className = "column-group";
+      group.dataset.id = epic.id;
+      group.style.flex = `${subColumns.length} 1 0`;
+      group.style.minWidth = `${subColumns.length * 180}px`;
+
+      // Click to toggle pin (same pattern as columns)
+      group.addEventListener("click", () => {
+        if (group.classList.contains("collapsed")) {
+          pinnedColumns.add(epic.id);
+          group.classList.remove("collapsed");
+        } else if (pinnedColumns.has(epic.id)) {
+          pinnedColumns.delete(epic.id);
+          group.classList.add("collapsed");
+        }
+      });
+
+      const header = document.createElement("div");
+      header.className = "group-header" + (epic.status === "closed" ? " group-header-closed" : "");
+
+      const statusSpan = document.createElement("span");
+      statusSpan.className = `group-status s-${epic.status}`;
+      statusSpan.textContent = STATUS_ICON[epic.status] || "○";
+      header.appendChild(statusSpan);
+
+      const titleSpan = document.createElement("span");
+      titleSpan.className = "group-title";
+      titleSpan.title = epic.title || "";
+      titleSpan.textContent = epic.title || "";
+      header.appendChild(titleSpan);
+
+      if (epic.priority) {
+        const prSpan = document.createElement("span");
+        prSpan.className = `group-priority pr-${epic.priority}`;
+        prSpan.textContent = epic.priority;
+        header.appendChild(prSpan);
+      }
+
+      const countSpan = document.createElement("span");
+      countSpan.className = "group-count";
+      const allTasks = subColumns.flatMap(sc => sc.children);
+      const doneCount = allTasks.filter(t => t.status === "closed" || t.status === "cancelled").length;
+      countSpan.textContent = `${doneCount}/${allTasks.length}`;
+      header.appendChild(countSpan);
+
+      group.appendChild(header);
+
+      const columnsDiv = document.createElement("div");
+      columnsDiv.className = "group-columns";
+
+      for (const { issue, children } of subColumns) {
+        const col = createColumn(issue, children);
+        columnsDiv.appendChild(col);
+      }
+
+      group.appendChild(columnsDiv);
+      return group;
+    }
+
+    function updateGroup(group, epic, subColumns) {
+      group.style.flex = `${subColumns.length} 1 0`;
+      group.style.minWidth = `${subColumns.length * 180}px`;
+
+      // Update header
+      const header = group.querySelector(":scope > .group-header");
+      header.className = "group-header" + (epic.status === "closed" ? " group-header-closed" : "");
+
+      const statusSpan = header.querySelector(".group-status");
+      statusSpan.className = `group-status s-${epic.status}`;
+      statusSpan.textContent = STATUS_ICON[epic.status] || "○";
+
+      const countSpan = header.querySelector(".group-count");
+      const allTasks = subColumns.flatMap(sc => sc.children);
+      const doneCount = allTasks.filter(t => t.status === "closed" || t.status === "cancelled").length;
+      countSpan.textContent = `${doneCount}/${allTasks.length}`;
+
+      // Reconcile sub-columns
+      const columnsDiv = group.querySelector(":scope > .group-columns");
+      const existingCols = columnsDiv.querySelectorAll(":scope > .column");
+      const existingById = new Map();
+      for (const col of existingCols) {
+        existingById.set(col.dataset.id, col);
+      }
+
+      const newIds = new Set(subColumns.map(sc => sc.issue.id));
+
+      for (const col of existingCols) {
+        if (!newIds.has(col.dataset.id)) col.remove();
+      }
+
+      let prevCol = null;
+      for (const { issue, children } of subColumns) {
+        let col = existingById.get(issue.id);
+        if (col) {
+          updateColumn(col, issue, children);
+        } else {
+          col = createColumn(issue, children);
+          columnsDiv.appendChild(col);
+        }
+        if (prevCol && prevCol.nextElementSibling !== col) {
+          prevCol.after(col);
+        }
+        prevCol = col;
       }
     }
 
