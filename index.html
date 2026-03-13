@@ -582,12 +582,14 @@
       align-items: center;
       gap: 0.5rem;
       padding: 0.4rem 0.5rem 0.5rem;
+      flex-wrap: wrap;
     }
 
     .summary-stats {
       display: flex;
       gap: 0.5rem;
       flex: 1;
+      flex-wrap: wrap;
     }
 
     .summary-stat {
@@ -743,6 +745,23 @@
     body.focus-active .task-cancelled + .task-claimed { display: none; }
     body.focus-active .column.collapsed,
     body.focus-active .column-group.collapsed { display: none; }
+
+    /* When zoomed in / narrow viewport, shrink the cards */
+    @media (max-width: 1400px) {
+      .summary-stat-number { font-size: 2.4rem; }
+      .summary-stat-label { font-size: 1rem; }
+      .summary-stat-project .summary-stat-number { font-size: 1rem; }
+      .summary-stat { padding: 0.3rem 0.6rem; }
+      .focus-btn { font-size: 2.4rem; padding: 0.3rem 0.6rem; }
+    }
+
+    @media (max-width: 900px) {
+      .summary-stat-number { font-size: 1.6rem; }
+      .summary-stat-label { font-size: 0.75rem; }
+      .summary-stat-project .summary-stat-number { font-size: 0.85rem; }
+      .summary-stat { padding: 0.25rem 0.5rem; }
+      .focus-btn { font-size: 1.6rem; padding: 0.25rem 0.5rem; }
+    }
   </style>
 </head>
 <body>
