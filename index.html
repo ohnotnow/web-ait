@@ -81,41 +81,9 @@
       flex-direction: column;
     }
 
-    /* ── Header elements (now inside summary bar) ── */
-    .header-title {
-      font-family: 'IBM Plex Mono', monospace;
-      font-weight: 600;
-      font-size: 0.7rem;
-      color: var(--accent);
-      letter-spacing: 0.04em;
-      white-space: nowrap;
-    }
-
-    .header-project {
-      font-size: 0.65rem;
-      color: var(--text-muted);
-      font-family: 'IBM Plex Mono', monospace;
-    }
-
-    .header-sep {
-      width: 1px;
-      height: 1.2rem;
-      background: var(--border);
-      flex-shrink: 0;
-    }
-
-    .header-spacer { flex: 1; }
-
-    .header-time {
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 0.65rem;
-      color: var(--text-dim);
-      white-space: nowrap;
-    }
-
     .header-status {
-      width: 6px;
-      height: 6px;
+      width: 8px;
+      height: 8px;
       border-radius: 50%;
       background: var(--status-closed);
       flex-shrink: 0;
@@ -612,8 +580,8 @@
     .summary-top {
       display: flex;
       align-items: center;
-      gap: 1rem;
-      padding: 0.5rem 1rem;
+      gap: 0.5rem;
+      padding: 0.4rem 0.5rem 0.5rem;
     }
 
     .summary-stats {
@@ -629,6 +597,35 @@
       padding: 0.5rem 1rem;
       border-radius: 4px;
       white-space: nowrap;
+    }
+
+    /* Project name card */
+    .summary-stat-project {
+      position: relative;
+      background: var(--header-bg);
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.1rem;
+      min-width: 0;
+    }
+
+    .summary-stat-project .summary-stat-number {
+      font-size: 1.6rem;
+      color: var(--accent);
+      white-space: normal;
+      word-wrap: break-word;
+      line-height: 1.1;
+    }
+
+    .summary-stat-project .summary-stat-label {
+      font-size: 0.65rem;
+      color: var(--text-dim);
+    }
+
+    .summary-stat-project .header-status {
+      position: absolute;
+      top: 0.5rem;
+      right: 0.5rem;
     }
 
     .summary-stat-number {
@@ -711,27 +708,33 @@
     }
     .task-attention { animation: attention-pulse 2.5s ease-in-out infinite; }
 
-    /* ── Focus mode ── */
+    /* ── Focus mode card ── */
     .focus-btn {
+      display: flex;
+      align-items: baseline;
+      gap: 0.4rem;
       font-family: 'IBM Plex Mono', monospace;
-      font-size: 0.65rem;
+      font-size: 1.8rem;
       font-weight: 600;
-      padding: 0.15rem 0.45rem;
-      border-radius: 3px;
-      border: 1px solid var(--border);
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      border: 2px solid var(--border);
       background: transparent;
-      color: var(--text-muted);
+      color: var(--text-dim);
       cursor: pointer;
       white-space: nowrap;
-      letter-spacing: 0.02em;
+      transition: all 0.2s ease;
     }
 
-    .focus-btn:hover { background: var(--surface-hover); }
+    .focus-btn:hover {
+      background: var(--surface-hover);
+      border-color: var(--text-muted);
+    }
 
     .focus-btn.active {
       color: var(--accent);
       border-color: var(--accent);
-      background: rgba(91,138,240,0.10);
+      background: rgba(91,138,240,0.12);
     }
 
     body.focus-active .task-closed,
@@ -746,15 +749,13 @@
 <body>
   <div class="summary-bar" id="summary-bar">
     <div class="summary-top">
-      <span class="header-title">ait-web</span>
-      <span class="header-sep"></span>
-      <span class="header-project" id="project">—</span>
-      <span class="header-sep"></span>
+      <div class="summary-stat summary-stat-project" id="project-card">
+        <span class="summary-stat-number" id="project-name">—</span>
+        <span class="summary-stat-label" id="project-time">—</span>
+        <span class="header-status" id="status-dot"></span>
+      </div>
       <div class="summary-stats" id="summary-stats"></div>
-      <span class="header-spacer"></span>
       <button class="focus-btn" id="focus-btn" title="Hide completed tasks and columns">focus</button>
-      <span class="header-time" id="time">—</span>
-      <span class="header-status" id="status-dot"></span>
     </div>
     <div class="summary-progress" id="summary-progress"></div>
   </div>
@@ -767,8 +768,8 @@
   <div class="reconnecting" id="reconnecting">reconnecting&hellip;</div>
 
   <script>
-    const projectEl = document.getElementById("project");
-    const timeEl = document.getElementById("time");
+    const projectNameEl = document.getElementById("project-name");
+    const projectTimeEl = document.getElementById("project-time");
     const boardEl = document.getElementById("board");
     const statusDot = document.getElementById("status-dot");
     const reconnectEl = document.getElementById("reconnecting");
@@ -828,9 +829,11 @@
       const counts = data.status?.counts || {};
       const issues = data.issues?.issues || [];
 
-      // Header
-      projectEl.textContent = config.prefix || "—";
-      timeEl.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      // Project card
+      const prefix = config.prefix || "—";
+      const basename = prefix.split("/").pop().replace(/[-_]/g, " ");
+      projectNameEl.textContent = basename;
+      projectTimeEl.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
       // ── Summary stat cards ──
       const allTasks = issues.filter(i => i.type === "task");
