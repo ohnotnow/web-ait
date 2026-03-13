@@ -506,6 +506,87 @@
       max-height: none;
     }
 
+    /* ── Initiative banner ── */
+    .initiative-banner {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.35rem 0.75rem;
+      background: var(--header-bg);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .initiative-status {
+      font-size: 0.7rem;
+      line-height: 1;
+      flex-shrink: 0;
+    }
+
+    .initiative-label {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.55rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    .initiative-title {
+      font-weight: 500;
+      font-size: 0.7rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      flex: 1;
+      min-width: 0;
+      color: var(--accent);
+    }
+
+    .initiative-priority {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.55rem;
+      font-weight: 600;
+      padding: 0.05rem 0.25rem;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    .initiative-count {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.55rem;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    .initiative-banner-closed {
+      opacity: 0.4;
+    }
+
+    /* ── Initiative section (banner + its epic columns) ── */
+    .initiative-section {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      transition: flex 0.4s ease, min-width 0.4s ease, max-width 0.4s ease;
+    }
+
+    .initiative-section > .initiative-columns {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+    }
+
+    .initiative-section > .initiative-columns > .column,
+    .initiative-section > .initiative-columns > .column-group {
+      border-right: 1px solid var(--border);
+    }
+
+    .initiative-section > .initiative-columns > :last-child {
+      border-right: none;
+    }
+
     /* ── All-clear state ── */
     .all-clear {
       display: none;
@@ -1247,6 +1328,9 @@
         return null;
       }
 
+      const initiatives = issues.filter(i => i.type === "initiative");
+      initiatives.sort(sortFn);
+
       const epics = issues.filter(i => i.type === "epic");
       epics.sort(sortFn);
 
@@ -1261,16 +1345,12 @@
       }
       standalone.sort(sortFn);
 
-      // Build column data — separate active from completed
-      const activeColumns = [];
-      const completedColumns = [];
-
-      for (const epic of epics) {
+      // Helper: build a column entry for an epic
+      function buildEpicEntry(epic) {
         const directKids = (childrenOf.get(epic.id) || []).slice().sort(sortFn);
         const hasSubGroups = directKids.some(k => (childrenOf.get(k.id) || []).length > 0);
 
         if (hasSubGroups) {
-          // Grouped layout — each child-with-children becomes a sub-column
           const subColumns = [];
           const leafTasks = [];
 
@@ -1296,18 +1376,40 @@
           const allDone = allTasks.length > 0 && allTasks.every(t => t.status === "closed" || t.status === "cancelled");
           const isCompleted = epic.status === "closed" || epic.status === "cancelled" || allDone;
 
-          const entry = { epic, subColumns, grouped: true, completed: isCompleted };
-          if (isCompleted) completedColumns.push(entry);
-          else activeColumns.push(entry);
+          return { epic, subColumns, grouped: true, completed: isCompleted };
         } else {
-          // Single column — same as before
           const children = flattenChildren(epic.id, 0);
           const allDone = children.length > 0 && children.every(t => t.status === "closed" || t.status === "cancelled");
           const isCompleted = epic.status === "closed" || epic.status === "cancelled" || allDone;
-          const entry = { epic, children, grouped: false, completed: isCompleted };
-          if (isCompleted) completedColumns.push(entry);
-          else activeColumns.push(entry);
+          return { epic, children, grouped: false, completed: isCompleted };
         }
+      }
+
+      // Track which epics belong to an initiative
+      const initiativeEpicIds = new Set();
+      const initiativeSections = [];
+
+      for (const init of initiatives) {
+        const initEpics = epics.filter(e => e.parent_id === init.id);
+        for (const e of initEpics) initiativeEpicIds.add(e.id);
+        const entries = initEpics.map(buildEpicEntry);
+        const activeEntries = entries.filter(e => !e.completed);
+        const completedEntries = entries.filter(e => e.completed);
+        initiativeSections.push({
+          initiative: init,
+          columns: [...activeEntries, ...completedEntries],
+        });
+      }
+
+      // Build column data for epics NOT under an initiative
+      const activeColumns = [];
+      const completedColumns = [];
+
+      for (const epic of epics) {
+        if (initiativeEpicIds.has(epic.id)) continue;
+        const entry = buildEpicEntry(epic);
+        if (entry.completed) completedColumns.push(entry);
+        else activeColumns.push(entry);
       }
 
       if (standalone.length) {
@@ -1323,7 +1425,8 @@
       const columns = [...activeColumns, ...completedColumns];
 
       // All-clear state: no active columns and no standalone tasks
-      const allClear = activeColumns.length === 0 && standalone.length === 0 && epics.length > 0;
+      const hasActiveInitiativeWork = initiativeSections.some(s => s.columns.some(e => !e.completed));
+      const allClear = activeColumns.length === 0 && standalone.length === 0 && !hasActiveInitiativeWork && (epics.length > 0 || initiatives.length > 0);
       if (allClear) {
         boardEl.style.display = "none";
         summaryBarEl.style.display = "none";
@@ -1339,14 +1442,27 @@
         allClearEl.classList.remove("visible");
       }
 
-      // Reconcile board children (columns and groups)
-      const existingEls = boardEl.querySelectorAll(":scope > .column, :scope > .column-group");
+      // Reconcile board children (columns, groups, and initiative sections)
+      const existingEls = boardEl.querySelectorAll(":scope > .column, :scope > .column-group, :scope > .initiative-section");
       const existingById = new Map();
       for (const el of existingEls) {
         existingById.set(el.dataset.id, el);
       }
 
-      const newIds = new Set(columns.map(c => c.epic.id));
+      // Build the full ordered list of top-level board items
+      const allBoardItems = [];
+
+      // Initiative sections first
+      for (const section of initiativeSections) {
+        allBoardItems.push({ type: "initiative", id: section.initiative.id, section });
+      }
+
+      // Then loose columns
+      for (const entry of columns) {
+        allBoardItems.push({ type: entry.grouped ? "group" : "column", id: entry.epic.id, entry });
+      }
+
+      const newIds = new Set(allBoardItems.map(item => item.id));
 
       // Remove elements that no longer exist
       for (const el of existingEls) {
@@ -1355,33 +1471,40 @@
 
       // Update or create
       let prevEl = null;
-      for (const entry of columns) {
-        const { epic, completed } = entry;
-        let el = existingById.get(epic.id);
+      for (const item of allBoardItems) {
+        let el = existingById.get(item.id);
 
-        if (entry.grouped) {
+        if (item.type === "initiative") {
+          const { initiative, columns: initColumns } = item.section;
+          if (el && el.classList.contains("initiative-section")) {
+            updateInitiativeSection(el, initiative, initColumns);
+          } else {
+            if (el) el.remove();
+            el = createInitiativeSection(initiative, initColumns);
+            boardEl.appendChild(el);
+          }
+        } else if (item.type === "group") {
+          const { epic, subColumns, completed } = item.entry;
           if (el && el.classList.contains("column-group")) {
-            updateGroup(el, epic, entry.subColumns);
+            updateGroup(el, epic, subColumns);
           } else {
             if (el) el.remove();
-            el = createGroup(epic, entry.subColumns);
+            el = createGroup(epic, subColumns);
             boardEl.appendChild(el);
           }
+          if (completed && !pinnedColumns.has(epic.id)) el.classList.add("collapsed");
+          else el.classList.remove("collapsed");
         } else {
-          if (el && !el.classList.contains("column-group")) {
-            updateColumn(el, epic, entry.children);
+          const { epic, children, completed } = item.entry;
+          if (el && !el.classList.contains("column-group") && !el.classList.contains("initiative-section")) {
+            updateColumn(el, epic, children);
           } else {
             if (el) el.remove();
-            el = createColumn(epic, entry.children);
+            el = createColumn(epic, children);
             boardEl.appendChild(el);
           }
-        }
-
-        // Collapse/expand completed entries
-        if (completed && !pinnedColumns.has(epic.id)) {
-          el.classList.add("collapsed");
-        } else {
-          el.classList.remove("collapsed");
+          if (completed && !pinnedColumns.has(epic.id)) el.classList.add("collapsed");
+          else el.classList.remove("collapsed");
         }
 
         // Ensure order
@@ -1696,6 +1819,133 @@
           prevCol.after(col);
         }
         prevCol = col;
+      }
+    }
+
+    function createInitiativeBanner(initiative, epicEntries) {
+      const banner = document.createElement("div");
+      const isClosed = initiative.status === "closed" || initiative.status === "cancelled";
+      banner.className = "initiative-banner" + (isClosed ? " initiative-banner-closed" : "");
+
+      const statusSpan = document.createElement("span");
+      statusSpan.className = `initiative-status s-${initiative.status}`;
+      statusSpan.textContent = STATUS_ICON[initiative.status] || "○";
+      banner.appendChild(statusSpan);
+
+      const label = document.createElement("span");
+      label.className = "initiative-label";
+      label.textContent = "initiative";
+      banner.appendChild(label);
+
+      const titleSpan = document.createElement("span");
+      titleSpan.className = "initiative-title";
+      titleSpan.title = initiative.title || "";
+      titleSpan.textContent = initiative.title || "";
+      banner.appendChild(titleSpan);
+
+      if (initiative.priority) {
+        const prSpan = document.createElement("span");
+        prSpan.className = `initiative-priority pr-${initiative.priority}`;
+        prSpan.textContent = initiative.priority;
+        banner.appendChild(prSpan);
+      }
+
+      // Gather all descendant tasks for a count
+      const allTasks = epicEntries.flatMap(e =>
+        e.grouped ? e.subColumns.flatMap(sc => sc.children) : (e.children || [])
+      );
+      const doneCount = allTasks.filter(t => t.status === "closed" || t.status === "cancelled").length;
+      if (allTasks.length > 0) {
+        const countSpan = document.createElement("span");
+        countSpan.className = "initiative-count";
+        countSpan.textContent = `${doneCount}/${allTasks.length}`;
+        banner.appendChild(countSpan);
+
+        const miniBar = buildMiniProgress(allTasks);
+        if (miniBar) banner.appendChild(miniBar);
+      }
+
+      return banner;
+    }
+
+    function createInitiativeSection(initiative, epicEntries) {
+      const section = document.createElement("div");
+      section.className = "initiative-section";
+      section.dataset.id = initiative.id;
+      section.style.flex = `${Math.max(epicEntries.length, 1)} 1 0`;
+
+      const banner = createInitiativeBanner(initiative, epicEntries);
+      section.appendChild(banner);
+
+      const columnsDiv = document.createElement("div");
+      columnsDiv.className = "initiative-columns";
+
+      for (const entry of epicEntries) {
+        let el;
+        if (entry.grouped) {
+          el = createGroup(entry.epic, entry.subColumns);
+        } else {
+          el = createColumn(entry.epic, entry.children);
+        }
+        if (entry.completed && !pinnedColumns.has(entry.epic.id)) {
+          el.classList.add("collapsed");
+        }
+        columnsDiv.appendChild(el);
+      }
+
+      section.appendChild(columnsDiv);
+      return section;
+    }
+
+    function updateInitiativeSection(section, initiative, epicEntries) {
+      section.style.flex = `${Math.max(epicEntries.length, 1)} 1 0`;
+
+      // Update banner
+      const oldBanner = section.querySelector(":scope > .initiative-banner");
+      const newBanner = createInitiativeBanner(initiative, epicEntries);
+      if (oldBanner) oldBanner.replaceWith(newBanner);
+      else section.prepend(newBanner);
+
+      // Reconcile epic columns within the section
+      const columnsDiv = section.querySelector(":scope > .initiative-columns");
+      const existingCols = columnsDiv.querySelectorAll(":scope > .column, :scope > .column-group");
+      const existingById = new Map();
+      for (const col of existingCols) {
+        existingById.set(col.dataset.id, col);
+      }
+
+      const newIds = new Set(epicEntries.map(e => e.epic.id));
+      for (const col of existingCols) {
+        if (!newIds.has(col.dataset.id)) col.remove();
+      }
+
+      let prevCol = null;
+      for (const entry of epicEntries) {
+        let el = existingById.get(entry.epic.id);
+        if (entry.grouped) {
+          if (el && el.classList.contains("column-group")) {
+            updateGroup(el, entry.epic, entry.subColumns);
+          } else {
+            if (el) el.remove();
+            el = createGroup(entry.epic, entry.subColumns);
+            columnsDiv.appendChild(el);
+          }
+        } else {
+          if (el && !el.classList.contains("column-group")) {
+            updateColumn(el, entry.epic, entry.children);
+          } else {
+            if (el) el.remove();
+            el = createColumn(entry.epic, entry.children);
+            columnsDiv.appendChild(el);
+          }
+        }
+        if (entry.completed && !pinnedColumns.has(entry.epic.id)) el.classList.add("collapsed");
+        else el.classList.remove("collapsed");
+
+        if (prevCol && prevCol.nextElementSibling !== el) {
+          prevCol.after(el);
+        }
+        prevCol = el;
       }
     }
 
