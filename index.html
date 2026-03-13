@@ -81,60 +81,28 @@
       flex-direction: column;
     }
 
-    /* ── Header bar ── */
-    .header {
-      display: flex;
-      align-items: center;
-      gap: 1rem;
-      padding: 0.5rem 1rem;
-      background: var(--header-bg);
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-      min-height: 2.5rem;
-    }
-
+    /* ── Header elements (now inside summary bar) ── */
     .header-title {
       font-family: 'IBM Plex Mono', monospace;
       font-weight: 600;
-      font-size: 0.8rem;
+      font-size: 0.7rem;
       color: var(--accent);
       letter-spacing: 0.04em;
       white-space: nowrap;
     }
 
     .header-project {
-      font-size: 0.75rem;
+      font-size: 0.65rem;
       color: var(--text-muted);
       font-family: 'IBM Plex Mono', monospace;
     }
 
     .header-sep {
       width: 1px;
-      height: 1rem;
+      height: 1.2rem;
       background: var(--border);
       flex-shrink: 0;
     }
-
-    .counts {
-      display: flex;
-      gap: 0.4rem;
-      flex-wrap: nowrap;
-    }
-
-    .count-pill {
-      font-family: 'IBM Plex Mono', monospace;
-      font-size: 0.65rem;
-      font-weight: 600;
-      padding: 0.15rem 0.45rem;
-      border-radius: 3px;
-      white-space: nowrap;
-      letter-spacing: 0.02em;
-    }
-
-    .count-open { color: var(--count-open); background: var(--count-open-bg); }
-    .count-in_progress { color: var(--count-progress); background: var(--count-progress-bg); }
-    .count-closed { color: var(--count-closed); background: var(--count-closed-bg); }
-    .count-ready { color: var(--count-ready); background: var(--count-ready-bg); }
 
     .header-spacer { flex: 1; }
 
@@ -632,50 +600,69 @@
 
     .reconnecting.visible { display: block; }
 
-    /* ── Summary hero strip ── */
+    /* ── Summary bar ── */
     .summary-bar {
       display: flex;
-      align-items: center;
-      gap: 1.5rem;
-      padding: 0.5rem 1rem;
+      flex-direction: column;
       background: var(--surface);
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
     }
 
+    .summary-top {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: 0.5rem 1rem;
+    }
+
     .summary-stats {
       display: flex;
-      gap: 1.5rem;
-      flex-shrink: 0;
+      gap: 0.5rem;
+      flex: 1;
     }
 
     .summary-stat {
+      display: flex;
+      align-items: baseline;
+      gap: 0.4rem;
+      padding: 0.3rem 0.7rem;
+      border-radius: 4px;
+      white-space: nowrap;
+    }
+
+    .summary-stat-number {
       font-family: 'IBM Plex Mono', monospace;
       font-size: 1.8rem;
       font-weight: 600;
       line-height: 1;
-      white-space: nowrap;
     }
 
     .summary-stat-label {
-      font-family: 'IBM Plex Sans', sans-serif;
-      font-size: 0.65rem;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.7rem;
       font-weight: 400;
       color: var(--text-muted);
-      display: block;
-      margin-top: 0.15rem;
     }
 
-    .summary-stat-progress { color: var(--status-progress); }
-    .summary-stat-p0 { color: var(--p0); }
-    .summary-stat-done { color: var(--status-closed); }
+    .summary-stat-open { color: var(--count-open); background: var(--count-open-bg); }
+    .summary-stat-open .summary-stat-label { color: var(--count-open); opacity: 0.7; }
+
+    .summary-stat-progress { color: var(--status-progress); background: var(--count-progress-bg); }
+    .summary-stat-progress .summary-stat-label { color: var(--status-progress); opacity: 0.7; }
+
+    .summary-stat-p0 { color: var(--p0); background: var(--p0-bg); }
+    .summary-stat-p0 .summary-stat-label { color: var(--p0); opacity: 0.7; }
 
     .summary-stat-p0.has-p0 {
-      background: rgba(224,85,85,0.12);
-      padding: 0.2rem 0.5rem;
-      border-radius: 4px;
       animation: p0-pulse 2.5s ease-in-out infinite;
     }
+
+    .summary-stat-done { color: var(--status-closed); background: var(--count-closed-bg); }
+    .summary-stat-done .summary-stat-label { color: var(--status-closed); opacity: 0.7; }
+
+    .summary-stat-ready { color: var(--count-ready); background: var(--count-ready-bg); }
+    .summary-stat-ready .summary-stat-label { color: var(--count-ready); opacity: 0.7; }
 
     @keyframes p0-pulse {
       0%, 100% { background: rgba(224,85,85,0.12); }
@@ -683,10 +670,7 @@
     }
 
     .summary-progress {
-      flex: 1;
       height: 6px;
-      border-radius: 3px;
-      overflow: hidden;
       display: flex;
       background: var(--border);
     }
@@ -760,19 +744,18 @@
   </style>
 </head>
 <body>
-  <div class="header">
-    <span class="header-title">ait-web</span>
-    <span class="header-sep"></span>
-    <span class="header-project" id="project">—</span>
-    <span class="header-sep"></span>
-    <div class="counts" id="counts"></div>
-    <button class="focus-btn" id="focus-btn" title="Hide completed tasks and columns">focus</button>
-    <span class="header-spacer"></span>
-    <span class="header-time" id="time">—</span>
-    <span class="header-status" id="status-dot"></span>
-  </div>
   <div class="summary-bar" id="summary-bar">
-    <div class="summary-stats" id="summary-stats"></div>
+    <div class="summary-top">
+      <span class="header-title">ait-web</span>
+      <span class="header-sep"></span>
+      <span class="header-project" id="project">—</span>
+      <span class="header-sep"></span>
+      <div class="summary-stats" id="summary-stats"></div>
+      <span class="header-spacer"></span>
+      <button class="focus-btn" id="focus-btn" title="Hide completed tasks and columns">focus</button>
+      <span class="header-time" id="time">—</span>
+      <span class="header-status" id="status-dot"></span>
+    </div>
     <div class="summary-progress" id="summary-progress"></div>
   </div>
   <div class="board" id="board"></div>
@@ -785,7 +768,6 @@
 
   <script>
     const projectEl = document.getElementById("project");
-    const countsEl = document.getElementById("counts");
     const timeEl = document.getElementById("time");
     const boardEl = document.getElementById("board");
     const statusDot = document.getElementById("status-dot");
@@ -850,34 +832,31 @@
       projectEl.textContent = config.prefix || "—";
       timeEl.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
-      // Count pills
-      const countMap = [
-        ["open", "open"],
-        ["in_progress", "in progress"],
-        ["closed", "closed"],
-        ["ready", "ready"],
-      ];
-      countsEl.innerHTML = countMap
-        .map(([key, label]) => `<span class="count-pill count-${key}">${label} ${counts[key] ?? 0}</span>`)
-        .join("");
-
-      // ── Summary hero strip ──
+      // ── Summary stat cards ──
       const allTasks = issues.filter(i => i.type === "task");
       const totalTasks = allTasks.length;
       const doneTasks = allTasks.filter(t => t.status === "closed" || t.status === "cancelled").length;
       const wipTasks = allTasks.filter(t => t.status === "in_progress").length;
       const openTasks = totalTasks - doneTasks - wipTasks;
+      const readyCount = counts.ready ?? 0;
       const p0Urgent = allTasks.filter(t => t.priority === "P0" && (t.status === "open" || t.status === "in_progress")).length;
+
+      function statCard(num, label, cls, extra) {
+        return `<div class="summary-stat ${cls}${extra || ''}">`
+          + `<span class="summary-stat-number">${num}</span>`
+          + `<span class="summary-stat-label">${label}</span></div>`;
+      }
 
       if (focusMode) {
         const remaining = totalTasks - doneTasks;
-        summaryStatsEl.innerHTML =
-          `<div class="summary-stat summary-stat-progress">${remaining}<span class="summary-stat-label">remaining</span></div>`;
+        summaryStatsEl.innerHTML = statCard(remaining, "remaining", "summary-stat-progress");
       } else {
         summaryStatsEl.innerHTML =
-          `<div class="summary-stat summary-stat-progress">${wipTasks}<span class="summary-stat-label">in progress</span></div>` +
-          `<div class="summary-stat summary-stat-p0${p0Urgent > 0 ? ' has-p0' : ''}">${p0Urgent}<span class="summary-stat-label">blocked P0</span></div>` +
-          `<div class="summary-stat summary-stat-done">${doneTasks}<span class="summary-stat-label">done</span></div>`;
+          statCard(openTasks, "open", "summary-stat-open") +
+          statCard(wipTasks, "in progress", "summary-stat-progress") +
+          statCard(p0Urgent, "P0", "summary-stat-p0", p0Urgent > 0 ? " has-p0" : "") +
+          statCard(doneTasks, "done", "summary-stat-done") +
+          statCard(readyCount, "ready", "summary-stat-ready");
       }
 
       // Stacked progress bar
