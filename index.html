@@ -543,6 +543,28 @@
       color: var(--text-muted);
     }
 
+    .all-clear-projects {
+      display: none;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--accent);
+      cursor: pointer;
+      border: 1px solid var(--accent);
+      background: rgba(91,138,240,0.08);
+      padding: 0.5rem 1.2rem;
+      border-radius: 6px;
+      transition: all 0.15s ease;
+      margin-top: 1rem;
+    }
+
+    .has-multiple-projects .all-clear-projects { display: inline-block; }
+
+    .all-clear-projects:hover {
+      color: #fff;
+      background: var(--accent);
+    }
+
     /* ── Empty state ── */
     .empty {
       padding: 1rem 0.75rem;
@@ -609,6 +631,145 @@
       align-items: flex-start;
       gap: 0.1rem;
       min-width: 0;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+
+    .summary-stat-project:hover {
+      background: var(--surface-hover);
+    }
+
+    .summary-stat-project .project-chevron {
+      display: none;
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      margin-left: 0.3rem;
+      transition: transform 0.2s ease;
+    }
+
+    .has-multiple-projects .project-chevron {
+      display: inline;
+    }
+
+    .sidebar-open .project-chevron {
+      transform: rotate(180deg);
+    }
+
+    /* ── Project sidebar ── */
+    .sidebar-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.3);
+      z-index: 90;
+    }
+
+    .sidebar-overlay.visible { display: block; }
+
+    .sidebar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: 280px;
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      z-index: 100;
+      transform: translateX(-100%);
+      transition: transform 0.2s ease;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .sidebar.open { transform: translateX(0); }
+
+    .sidebar-header {
+      padding: 1rem;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.75rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .sidebar-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0.5rem 0;
+    }
+
+    .sidebar-item {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.6rem 1rem;
+      cursor: pointer;
+      transition: background 0.15s ease;
+      font-size: 0.85rem;
+      color: var(--text);
+    }
+
+    .sidebar-item:hover {
+      background: var(--surface-hover);
+    }
+
+    .sidebar-item.active {
+      background: rgba(91,138,240,0.1);
+      color: var(--accent);
+    }
+
+    .sidebar-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .sidebar-dot-active {
+      background: var(--status-progress);
+      animation: sidebar-pulse 2s ease-in-out infinite;
+    }
+
+    .sidebar-dot-idle { background: var(--status-open); }
+    .sidebar-dot-done { background: var(--status-closed); }
+    .sidebar-dot-empty { background: var(--text-dim); }
+
+    @keyframes sidebar-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .sidebar-name {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .sidebar-remove {
+      opacity: 0;
+      border: none;
+      background: none;
+      color: var(--text-dim);
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 0 0.2rem;
+      transition: opacity 0.15s ease, color 0.15s ease;
+    }
+
+    .sidebar-item:hover .sidebar-remove { opacity: 1; }
+    .sidebar-remove:hover { color: var(--p0); }
+
+    .sidebar-empty {
+      padding: 2rem 1rem;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.8rem;
+      line-height: 1.6;
     }
 
     .summary-stat-project .summary-stat-number {
@@ -768,7 +929,7 @@
   <div class="summary-bar" id="summary-bar">
     <div class="summary-top">
       <div class="summary-stat summary-stat-project" id="project-card">
-        <span class="summary-stat-number" id="project-name">—</span>
+        <span class="summary-stat-number" id="project-name">—<span class="project-chevron">▼</span></span>
         <span class="summary-stat-label" id="project-time">—</span>
         <span class="header-status" id="status-dot"></span>
       </div>
@@ -782,8 +943,14 @@
     <span class="all-clear-dot"></span>
     <span class="all-clear-text">all clear</span>
     <span class="all-clear-counts" id="all-clear-counts"></span>
+    <button class="all-clear-projects" id="all-clear-projects">switch project</button>
   </div>
   <div class="reconnecting" id="reconnecting">reconnecting&hellip;</div>
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+  <div class="sidebar" id="sidebar">
+    <div class="sidebar-header">Projects</div>
+    <div class="sidebar-list" id="sidebar-list"></div>
+  </div>
 
   <script>
     const projectNameEl = document.getElementById("project-name");
@@ -797,9 +964,27 @@
     const summaryStatsEl = document.getElementById("summary-stats");
     const summaryProgressEl = document.getElementById("summary-progress");
     const focusBtnEl = document.getElementById("focus-btn");
+    const projectCardEl = document.getElementById("project-card");
+    const sidebarEl = document.getElementById("sidebar");
+    const sidebarOverlayEl = document.getElementById("sidebar-overlay");
+    const sidebarListEl = document.getElementById("sidebar-list");
 
-    // Track which columns have been manually expanded (pinned open)
-    const pinnedColumns = new Set();
+    // ── Multi-project state ──
+    const projectsData = new Map();   // projectPath -> { issues, status, config }
+    let projectsList = [];             // [{id, name, status, path}, ...] from server
+    let activeProjectId = null;
+
+    // Track which columns have been manually expanded (pinned open), per project
+    const pinnedColumnsPerProject = new Map();
+    function getPinnedColumns() {
+      if (!activeProjectId) return new Set();
+      if (!pinnedColumnsPerProject.has(activeProjectId)) {
+        pinnedColumnsPerProject.set(activeProjectId, new Set());
+      }
+      return pinnedColumnsPerProject.get(activeProjectId);
+    }
+    // Alias for existing code compatibility
+    let pinnedColumns = new Set();
 
     // Focus mode
     let focusMode = false;
@@ -816,6 +1001,81 @@
       cancelled: "✕",
     };
 
+    // ── Sidebar ──
+    let sidebarOpen = false;
+
+    function toggleSidebar() {
+      sidebarOpen = !sidebarOpen;
+      sidebarEl.classList.toggle("open", sidebarOpen);
+      sidebarOverlayEl.classList.toggle("visible", sidebarOpen);
+      document.body.classList.toggle("sidebar-open", sidebarOpen);
+    }
+
+    function closeSidebar() {
+      sidebarOpen = false;
+      sidebarEl.classList.remove("open");
+      sidebarOverlayEl.classList.remove("visible");
+      document.body.classList.remove("sidebar-open");
+    }
+
+    const allClearProjectsEl = document.getElementById("all-clear-projects");
+
+    projectCardEl.addEventListener("click", toggleSidebar);
+    allClearProjectsEl.addEventListener("click", toggleSidebar);
+    sidebarOverlayEl.addEventListener("click", closeSidebar);
+
+    function renderSidebar() {
+      if (projectsList.length === 0) {
+        sidebarListEl.innerHTML = '<div class="sidebar-empty">No projects registered.<br>Run <code>web-ait --client</code> from a project directory.</div>';
+        return;
+      }
+      sidebarListEl.innerHTML = "";
+      for (const p of projectsList) {
+        const item = document.createElement("div");
+        item.className = "sidebar-item" + (p.id === activeProjectId ? " active" : "");
+
+        const dot = document.createElement("span");
+        dot.className = "sidebar-dot sidebar-dot-" + (p.status || "empty");
+
+        const name = document.createElement("span");
+        name.className = "sidebar-name";
+        name.textContent = p.name;
+
+        const remove = document.createElement("button");
+        remove.className = "sidebar-remove";
+        remove.textContent = "✕";
+        remove.title = "Remove project";
+        remove.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          await fetch(`/api/projects?path=${encodeURIComponent(p.id)}`, { method: "DELETE" });
+        });
+
+        item.appendChild(dot);
+        item.appendChild(name);
+        item.appendChild(remove);
+        item.addEventListener("click", () => {
+          switchToProject(p.id);
+          closeSidebar();
+        });
+        sidebarListEl.appendChild(item);
+      }
+    }
+
+    function switchToProject(projectId) {
+      if (activeProjectId === projectId) return;
+      // Save current pinned columns
+      if (activeProjectId) {
+        pinnedColumnsPerProject.set(activeProjectId, new Set(pinnedColumns));
+      }
+      activeProjectId = projectId;
+      pinnedColumns = getPinnedColumns();
+      // Clear board for clean re-render
+      boardEl.innerHTML = "";
+      const data = projectsData.get(projectId);
+      if (data) render(data);
+      renderSidebar();
+    }
+
     // ── SSE with auto-reconnect ──
     let reconnectDelay = 1000;
 
@@ -828,9 +1088,57 @@
         reconnectEl.classList.remove("visible");
       };
 
-      source.onmessage = (e) => {
-        render(JSON.parse(e.data));
-      };
+      source.addEventListener("projects", (e) => {
+        projectsList = JSON.parse(e.data);
+        document.body.classList.toggle("has-multiple-projects", projectsList.length > 1);
+        // Auto-select first project if none active
+        if (!activeProjectId && projectsList.length > 0) {
+          activeProjectId = projectsList[0].id;
+          pinnedColumns = getPinnedColumns();
+        }
+        renderSidebar();
+      });
+
+      source.addEventListener("update", (e) => {
+        const msg = JSON.parse(e.data);
+        projectsData.set(msg.projectId, {
+          issues: msg.issues,
+          status: msg.status,
+          config: msg.config,
+        });
+        // Render if this is the active project
+        if (msg.projectId === activeProjectId) {
+          render(projectsData.get(activeProjectId));
+        }
+        // Update sidebar status indicators
+        const proj = projectsList.find(p => p.id === msg.projectId);
+        if (proj) {
+          const data = projectsData.get(msg.projectId);
+          const issues = data?.issues?.issues || [];
+          const tasks = issues.filter(i => i.type === "task");
+          if (tasks.length === 0) proj.status = "empty";
+          else if (tasks.every(t => t.status === "closed" || t.status === "cancelled")) proj.status = "done";
+          else if (tasks.some(t => t.status === "in_progress")) proj.status = "active";
+          else proj.status = "idle";
+          renderSidebar();
+        }
+      });
+
+      source.addEventListener("removed", (e) => {
+        const msg = JSON.parse(e.data);
+        projectsData.delete(msg.projectId);
+        pinnedColumnsPerProject.delete(msg.projectId);
+        // If we were viewing this project, switch to another
+        if (activeProjectId === msg.projectId) {
+          activeProjectId = projectsList.length > 0 ? projectsList[0].id : null;
+          pinnedColumns = getPinnedColumns();
+          boardEl.innerHTML = "";
+          if (activeProjectId) {
+            const data = projectsData.get(activeProjectId);
+            if (data) render(data);
+          }
+        }
+      });
 
       source.onerror = () => {
         source.close();
