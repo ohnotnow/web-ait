@@ -109,6 +109,10 @@ type ProjectState = {
 const projects = new Map<string, ProjectState>();
 const sseClients = new Set<ReadableStreamDefaultController>();
 
+// --- Activity tracking (demo mode change detection) ---
+const previousTaskStates = new Map<string, Map<string, { status: string; claimed_by: string | null }>>();
+let initialPollDone = false;
+
 // --- ait command helpers ---
 async function runAit(dbPath: string, command: string[]): Promise<string> {
   return await $`${aitPath} --db ${dbPath} ${command}`.text();
@@ -240,6 +244,76 @@ async function pollProject(state: ProjectState): Promise<boolean> {
   }
 }
 
+// --- Detect task changes for activity feed ---
+function detectChanges(state: ProjectState): { changedTaskIds: string[]; completedEpicIds: string[] } {
+  const issues = (state.cachedData?.issues as any)?.issues || [];
+  const oldStates = previousTaskStates.get(state.projectPath) || new Map();
+  const newStates = new Map<string, { status: string; claimed_by: string | null }>();
+  const changedTaskIds: string[] = [];
+  const completedEpicIds: string[] = [];
+
+  for (const issue of issues) {
+    if (issue.type !== "task") continue;
+    newStates.set(issue.id, { status: issue.status, claimed_by: issue.claimed_by || null });
+
+    if (!initialPollDone) continue;
+
+    const old = oldStates.get(issue.id);
+    if (!old) {
+      broadcastEvent("activity", {
+        projectId: state.projectPath, timestamp: Date.now(),
+        title: issue.title, description: "New task created",
+        agent: null, type: "new_task",
+      });
+      changedTaskIds.push(issue.id);
+    } else {
+      if (old.status !== issue.status) {
+        broadcastEvent("activity", {
+          projectId: state.projectPath, timestamp: Date.now(),
+          title: issue.title, description: `Status → ${issue.status.replace("_", " ")}`,
+          agent: issue.claimed_by || null, type: "status_change",
+        });
+        changedTaskIds.push(issue.id);
+      }
+      if (!old.claimed_by && issue.claimed_by) {
+        broadcastEvent("activity", {
+          projectId: state.projectPath, timestamp: Date.now(),
+          title: issue.title, description: `Claimed by ${issue.claimed_by}`,
+          agent: issue.claimed_by, type: "claimed",
+        });
+        if (!changedTaskIds.includes(issue.id)) changedTaskIds.push(issue.id);
+      }
+    }
+  }
+
+  // Detect epic completions
+  if (initialPollDone) {
+    for (const issue of issues) {
+      if (issue.type !== "epic") continue;
+      const children = issues.filter((i: any) => i.parent_id === issue.id && i.type === "task");
+      if (children.length === 0) continue;
+      const allDone = children.every((t: any) => t.status === "closed" || t.status === "cancelled");
+      if (!allDone) continue;
+      // Check if previously NOT all done
+      const wasDone = children.every((t: any) => {
+        const old = oldStates.get(t.id);
+        return old && (old.status === "closed" || old.status === "cancelled");
+      });
+      if (!wasDone) {
+        broadcastEvent("activity", {
+          projectId: state.projectPath, timestamp: Date.now(),
+          title: issue.title, description: "Epic completed",
+          agent: null, type: "epic_complete",
+        });
+        completedEpicIds.push(issue.id);
+      }
+    }
+  }
+
+  previousTaskStates.set(state.projectPath, newStates);
+  return { changedTaskIds, completedEpicIds };
+}
+
 // --- Main poll loop ---
 async function poll(): Promise<void> {
   const projectListChanged = await syncProjectsFromFile();
@@ -249,11 +323,14 @@ async function poll(): Promise<void> {
   for (const state of projects.values()) {
     const changed = await pollProject(state);
     if (changed) {
+      const { changedTaskIds, completedEpicIds } = detectChanges(state);
       broadcastEvent("update", {
         projectId: state.projectPath,
         issues: state.cachedData!.issues,
         status: state.cachedData!.status,
         config: state.cachedData!.config,
+        changedTaskIds,
+        completedEpicIds,
       });
       anyDataChanged = true;
     }
@@ -263,6 +340,8 @@ async function poll(): Promise<void> {
   if (projectListChanged || anyDataChanged) {
     broadcastEvent("projects", buildProjectsList());
   }
+
+  initialPollDone = true;
 }
 
 // --- SSE handler ---
@@ -371,11 +450,13 @@ const server = Bun.serve({
   },
 });
 
-// Initial sync and poll
+// Initial sync and poll (seed previous states without activity events)
 await syncProjectsFromFile();
 for (const state of projects.values()) {
   await pollProject(state);
+  detectChanges(state);
 }
+initialPollDone = true;
 
 // Poll loop
 setInterval(poll, pollInterval * 1000);
