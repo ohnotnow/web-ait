@@ -2,7 +2,7 @@
 
 A web dashboard for [ait](https://github.com/ohnotnow/ait) (Agent Issue Tracker). It polls your local ait database and streams updates to the browser via Server-Sent Events so you can see what your coding agents are up to.
 
-Monitor multiple projects from a single dashboard — start the server once, then register projects as you begin working on them.
+Monitor multiple projects from a single dashboard. Start the server once, then register projects as you begin working on them.
 
 ![Screenshot](screenshot.png)
 
@@ -12,7 +12,7 @@ Monitor multiple projects from a single dashboard — start the server once, the
 - Shows status icons, priority badges, and which agent has claimed each task
 - Completed epics collapse to narrow strips and slide to the right, keeping active work front and centre
 - When everything is done, a calm "all clear" state replaces the board
-- **Multi-project sidebar** with per-project status indicators (active / idle / done)
+- Multi-project sidebar with per-project status indicators (active / idle / done)
 - Auto light/dark mode based on your system preference
 - Auto-reconnects if the SSE connection drops
 
@@ -28,7 +28,7 @@ bun install
 bun run dev
 ```
 
-This starts the server with hot-reload on `http://localhost:6174` (or the next free port).
+This starts the server with hot-reload on `http://localhost:6174`.
 
 ## Usage
 
@@ -44,10 +44,10 @@ This registers the project and starts the server in one step.
 
 ### Multiple projects
 
-Start the server in one terminal:
+Start the server in the background:
 
 ```bash
-bun run server.ts --server
+bun run server.ts --server &
 ```
 
 Then from each project directory you're working in:
@@ -68,9 +68,19 @@ You can also pre-register multiple projects and start the server in one go:
 bun run server.ts /path/to/project-a /path/to/project-b
 ```
 
+### Stopping the server
+
+```bash
+bun run server.ts --stop
+```
+
+This sends a graceful shutdown signal to the running server and cleans up.
+
 ### How it works
 
 Projects are tracked in `~/.config/web-ait/projects.txt` — one path per line. The `--client` flag appends to this file; the server polls it for changes. You can edit the file directly if you prefer.
+
+The server writes its PID to `~/.config/web-ait/server.pid` on startup. If you try to start a second server without specifying `--port`, it will detect the existing instance and bail out rather than silently starting a duplicate.
 
 ### Options
 
@@ -78,7 +88,8 @@ Projects are tracked in `~/.config/web-ait/projects.txt` — one path per line. 
 |------|---------|-------------|
 | `--server` | — | Start in server mode (reads projects from registration file) |
 | `--client` | — | Register current directory as a project and exit |
-| `--port <n>` | `6174` | Preferred port (auto-finds a free one if not specified) |
+| `--stop` | — | Stop a running server |
+| `--port <n>` | `6174` | Preferred port (exits with an error if the default port is taken) |
 | `--poll <n>` | `3` | Poll interval in seconds |
 | `--ait-path <path>` | `ait` | Path to the ait binary |
 | `--localhost` | off | Bind to 127.0.0.1 only (default is 0.0.0.0 for LAN access) |
@@ -88,18 +99,21 @@ Projects are tracked in `~/.config/web-ait/projects.txt` — one path per line. 
 Add these to your `~/.bashrc` or `~/.zshrc`:
 
 ```bash
-# Start the dashboard server
-alias webait-server='bun run /path/to/web-ait/server.ts --server'
+# Start the dashboard server in the background
+alias webait-server='bun run /path/to/web-ait/server.ts --server &'
 
 # Register the current project directory
 alias webait='bun run /path/to/web-ait/server.ts --client'
+
+# Stop the server
+alias webait-stop='bun run /path/to/web-ait/server.ts --stop'
 ```
 
-Workflow: run `webait-server` once, then `cd` into any project and run `webait` to add it to the dashboard.
+Workflow: run `webait-server` once, then `cd` into any project and run `webait` to add it to the dashboard. Run `webait-stop` when you're done.
 
-### Demo Mode
+### Demo mode
 
-If you want a rather flashier, noiser dashboard (which gives a little more impractical but 'wow' feel), append `?demo` to the url.  The visuals should still work ok over a video call - it's not _too_ out there...
+If you want a flashier, noisier dashboard, append `?demo` to the URL. It's impractical but looks good on a video call. Not _too_ out there.
 
 ## Licence
 

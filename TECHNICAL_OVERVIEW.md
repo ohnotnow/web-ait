@@ -1,10 +1,10 @@
 # Technical Overview
 
-Last updated: 2026-03-13
+Last updated: 2026-03-14
 
 ## What This Is
 
-A real-time web dashboard for [ait](https://github.com/ohnotnow/agent-issue-tracker) — polls local SQLite databases and streams issue state to the browser via SSE. Supports monitoring multiple projects from a single dashboard instance.
+A real-time web dashboard for [ait](https://github.com/ohnotnow/agent-issue-tracker). Polls local SQLite databases and streams issue state to the browser via SSE. Monitors multiple projects from one dashboard.
 
 ## Stack
 
@@ -27,12 +27,13 @@ That's the entire app. Two files.
 
 ### CLI Modes
 
-The server has two modes of operation, both using the same code path:
+Three modes:
 
-- **Server mode** (`--server` or path args): starts the dashboard, polls the registration file and all registered projects
-- **Client mode** (`--client`): registers the current directory to the projects file and exits
+- `--server` (or pass path args): starts the dashboard, polls the registration file and all registered projects
+- `--client`: registers the current directory to the projects file and exits
+- `--stop`: reads the PID file, sends SIGTERM to the running server, waits for exit, cleans up
 
-Path arguments (e.g. `bun run server.ts /path/a /path/b`) pre-register those paths to the projects file then start the server. There is no separate legacy code path — everything funnels through the registration file.
+Path arguments (e.g. `bun run server.ts /path/a /path/b`) pre-register those paths then start the server. Everything goes through the registration file.
 
 ### CLI Arguments
 
@@ -41,18 +42,25 @@ Path arguments (e.g. `bun run server.ts /path/a /path/b`) pre-register those pat
 | positional paths | — | Pre-register these projects, then start server |
 | `--server` | — | Start in server mode (reads from registration file) |
 | `--client` | — | Register current directory and exit |
+| `--stop` | — | Stop the running server |
 | `--port` | `6174` | Preferred port |
 | `--poll` | `3` | Poll interval in seconds |
 | `--ait-path` | `ait` | Path to the ait binary |
 | `--localhost` | off | Bind to 127.0.0.1 instead of 0.0.0.0 |
 
+### PID File and Duplicate Prevention
+
+On startup the server writes its PID to `~/.config/web-ait/server.pid` and removes it on clean shutdown (SIGINT/SIGTERM). If the PID file already exists and the process is alive, startup aborts. Stale PID files get cleaned up automatically.
+
+If port 6174 is already taken, the server exits rather than trying fallback ports. `--port <n>` bypasses this check.
+
 ### Registration File
 
-Projects are tracked in `~/.config/web-ait/projects.txt` — one absolute path per line. The server reads this file on every poll cycle to discover new projects or detect removed ones. The `--client` flag appends to this file. Users can also edit it directly.
+`~/.config/web-ait/projects.txt` holds one absolute path per line. The server re-reads it every poll cycle, so new projects appear and removed ones disappear without a restart. `--client` appends to this file. You can also just edit it by hand.
 
 ### Per-Project State
 
-Each registered project has its own state:
+Each project carries its own state:
 
 ```ts
 type ProjectState = {
@@ -77,7 +85,7 @@ All projects are stored in a `Map<string, ProjectState>` keyed by absolute path.
 
 ### SSE Protocol
 
-The server uses named SSE events (not plain `data:` messages):
+Named SSE events (not plain `data:` messages):
 
 | Event | Payload | When |
 |-------|---------|------|
@@ -85,7 +93,7 @@ The server uses named SSE events (not plain `data:` messages):
 | `update` | `{projectId, issues, status, config}` | When a specific project's data changes |
 | `removed` | `{projectId}` | When a project is removed via the API |
 
-On initial SSE connect, the server sends the `projects` list followed by an `update` for each project with cached data.
+On first connect the server sends the `projects` list, then an `update` for each project that has cached data.
 
 ### Functions
 
@@ -95,6 +103,10 @@ On initial SSE connect, the server sends the `projects` list followed by an `upd
 | `removeProjectFromFile(path)` | Removes a path from the projects file |
 | `readProjectsFile()` | Reads and parses the registration file |
 | `syncProjectsFromFile()` | Syncs in-memory project map with the file |
+| `isProcessRunning(pid)` | Checks if a process is alive via signal 0 |
+| `readPidFile()` | Reads the PID from `server.pid` |
+| `writePidFile()` | Writes current PID to `server.pid` |
+| `removePidFile()` | Deletes the PID file |
 | `runAit(dbPath, command[])` | Executes ait CLI via `Bun.$` with a given db path |
 | `pollProject(state)` | Fetches issues + status for one project, broadcasts if changed |
 | `poll()` | Syncs project list, then polls each project |
@@ -102,7 +114,7 @@ On initial SSE connect, the server sends the `projects` list followed by an `upd
 | `handleSSE()` | Creates a ReadableStream, sends initial state |
 | `projectStatus(data)` | Computes summary status: active / idle / done / empty |
 | `projectDisplayName(config, path)` | Derives human-friendly name from config or path |
-| `findPort()` | Tries a list of mathematical curiosity ports, then walks upward |
+| `findPort()` | Returns default port if free, exits with error if taken |
 
 ### Routes
 
@@ -115,16 +127,16 @@ On initial SSE connect, the server sends the `projects` list followed by an `upd
 
 ## Frontend Architecture (index.html)
 
-Everything is in one file — CSS in `<style>`, JS in `<script>`, no imports.
+One file. CSS in `<style>`, JS in `<script>`, no imports.
 
 ### CSS
 
-- CSS custom properties for all colours (dark theme default, light via `prefers-color-scheme`)
-- Five priority colour scales (P0-P4) with foreground + translucent background
-- Four status colours (open, in_progress, closed, cancelled)
-- Collapsed column styles use `writing-mode: vertical-lr` for sideways headers
-- Transitions on opacity, colour, and flex sizing for smooth updates
-- Sidebar styles: overlay, slide-in panel, status dots with pulse animation
+- Custom properties for all colours. Dark theme by default, light via `prefers-color-scheme`.
+- Priority colour scales (P0-P4): foreground + translucent background
+- Status colours: open, in_progress, closed, cancelled
+- Collapsed columns use `writing-mode: vertical-lr` for sideways headers
+- Transitions on opacity, colour, and flex sizing
+- Sidebar: overlay slide-in, status dots with pulse animation
 
 ### JavaScript
 
@@ -136,51 +148,42 @@ projectsList    // Array: [{id, name, status, path}, ...] from server
 activeProjectId // Currently viewed project path
 ```
 
-Pinned columns are scoped per project via `pinnedColumnsPerProject` (Map of Sets). Focus mode is global.
+Pinned columns are per-project (`pinnedColumnsPerProject`, a Map of Sets). Focus mode is global.
 
 #### SSE Connection
 
-`connect()` uses named event listeners instead of `onmessage`:
+`connect()` uses named event listeners rather than `onmessage`:
 
-- `projects` event: updates the sidebar project list, auto-selects first project
-- `update` event: stores data, re-renders if active project, updates sidebar status
-- `removed` event: cleans up state, switches to another project if needed
+- `projects`: updates sidebar, auto-selects first project
+- `update`: stores data, re-renders if it's the active project, updates sidebar status
+- `removed`: cleans up state, switches project if needed
 
-Reconnect uses exponential backoff (1s to 15s cap).
+Reconnects with exponential backoff (1s, capped at 15s).
 
 #### Sidebar
 
-Toggled by clicking the project name tile in the header. Shows all registered projects with:
+Click the project name in the header to toggle. Lists all registered projects with a status dot (pulsing amber for active, grey for idle, green for done), the name, and a remove button (`DELETE /api/projects`).
 
-- Status dot: pulsing amber (active/WIP), grey (idle), green (done)
-- Project name
-- Remove button (calls `DELETE /api/projects`)
-
-The chevron affordance on the project tile only appears when multiple projects are registered.
-
-An "all clear" view includes a "switch project" button so users aren't trapped when all tasks in the current project are complete.
+The chevron only shows when there are multiple projects. When all tasks in a project are done, an "all clear" view offers a "switch project" button so you're not stuck.
 
 #### Render Pipeline
 
-`render(data)` is called with the active project's data:
-1. Updates header bar (project name, count pills, timestamp)
-2. Groups issues: epics as columns, tasks under their parent epic, orphans in "Standalone"
-3. Separates active vs completed epics — completed sort to the right
-4. If all epics completed -> shows "all clear" state
-5. Reconciles DOM in-place (no innerHTML replacement) for CSS transition support
+`render(data)` takes the active project's data and:
+1. Updates the header (project name, count pills, timestamp)
+2. Groups issues into columns: epics become columns, tasks sit under their parent, orphans go in "Standalone"
+3. Sorts completed epics to the right
+4. Shows an "all clear" state if everything is done
+5. Reconciles the DOM in place (no `innerHTML` wipe) so CSS transitions work
 
-Switching projects clears the board and calls `render()` with the new project's cached data.
+Switching projects clears the board and re-renders from cache.
 
-Column states:
-- Active: full-width with task list visible
-- Collapsed (completed): 48px vertical strip, expands on hover
-- Pinned: user clicked a collapsed column to keep it expanded
+Column states: active (full-width, task list visible), collapsed (48px vertical strip, expands on hover), or pinned (user clicked a collapsed column to keep it open).
 
-DOM reconciliation: columns and tasks are matched by `data-id` / `data-task-id`, updated in place, reordered if needed, and removed if stale. This avoids layout thrash and lets CSS transitions work.
+Columns and tasks are matched by `data-id` / `data-task-id`, updated in place, reordered if needed, removed if stale. No layout thrash.
 
 ## Ports
 
-The fallback port list: 6174 (Kaprekar), 1729 (Hardy-Ramanujan), 2520 (smallest number divisible by 1-10), 5040 (7!), 8128 (perfect number), 6765 (Fibonacci), 4181 (Fibonacci).
+Default port is 6174 (Kaprekar's constant, no particular reason). If it's taken and you didn't pass `--port`, the server exits rather than guessing at another port.
 
 ## Local Development
 

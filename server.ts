@@ -3,8 +3,10 @@ import { resolve, basename } from "path";
 import { homedir } from "os";
 import { mkdir } from "node:fs/promises";
 
-// --- Registration file path ---
-const PROJECTS_FILE = resolve(homedir(), ".config", "web-ait", "projects.txt");
+// --- Config paths ---
+const CONFIG_DIR = resolve(homedir(), ".config", "web-ait");
+const PROJECTS_FILE = resolve(CONFIG_DIR, "projects.txt");
+const PID_FILE = resolve(CONFIG_DIR, "server.pid");
 
 // --- CLI argument parsing ---
 const args = process.argv.slice(2);
@@ -16,6 +18,7 @@ let aitPath = "ait";
 let hostname = "0.0.0.0";
 let clientMode = false;
 let serverMode = false;
+let stopMode = false;
 
 for (let i = 0; i < args.length; i++) {
   const arg = args[i]!;
@@ -32,6 +35,8 @@ for (let i = 0; i < args.length; i++) {
     clientMode = true;
   } else if (arg === "--server") {
     serverMode = true;
+  } else if (arg === "--stop") {
+    stopMode = true;
   } else if (!arg.startsWith("--")) {
     projectPaths.push(resolve(arg));
   }
@@ -79,6 +84,63 @@ async function removeProjectFromFile(projectPath: string): Promise<void> {
   const existing = await readProjectsFile();
   const filtered = existing.filter((p) => p !== projectPath);
   await writeProjectsFile(filtered);
+}
+
+// --- PID file helpers ---
+function isProcessRunning(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function readPidFile(): Promise<number | null> {
+  try {
+    const text = await Bun.file(PID_FILE).text();
+    const pid = parseInt(text.trim(), 10);
+    return Number.isNaN(pid) ? null : pid;
+  } catch {
+    return null;
+  }
+}
+
+async function writePidFile(): Promise<void> {
+  await ensureProjectsDir();
+  await Bun.write(PID_FILE, String(process.pid));
+}
+
+async function removePidFile(): Promise<void> {
+  try {
+    const { unlink } = await import("node:fs/promises");
+    await unlink(PID_FILE);
+  } catch {}
+}
+
+// --- Stop mode: kill running server and exit ---
+if (stopMode) {
+  const pid = await readPidFile();
+  if (!pid || !isProcessRunning(pid)) {
+    console.log("No running web-ait server found.");
+    await removePidFile();
+    process.exit(0);
+  }
+  process.kill(pid, "SIGTERM");
+  // Wait briefly for it to exit
+  let gone = false;
+  for (let i = 0; i < 20; i++) {
+    await Bun.sleep(100);
+    if (!isProcessRunning(pid)) { gone = true; break; }
+  }
+  if (gone) {
+    console.log(`Stopped web-ait server (PID ${pid}).`);
+    await removePidFile();
+  } else {
+    console.error(`Failed to stop server (PID ${pid}) — process still running.`);
+    process.exit(1);
+  }
+  process.exit(0);
 }
 
 // --- Client mode: register and exit ---
@@ -383,21 +445,7 @@ function handleSSE(): Response {
 }
 
 // --- Auto-port selection ---
-const FALLBACK_PORTS = [6174, 1729, 2520, 5040, 8128, 6765, 4181];
-
-async function findPort(): Promise<number> {
-  if (portExplicit) {
-    return preferredPort;
-  }
-
-  for (const port of FALLBACK_PORTS) {
-    if (await isPortFree(port)) return port;
-  }
-
-  let port = FALLBACK_PORTS[FALLBACK_PORTS.length - 1]! + 1;
-  while (!(await isPortFree(port))) port++;
-  return port;
-}
+const DEFAULT_PORT = 6174;
 
 async function isPortFree(port: number): Promise<boolean> {
   try {
@@ -409,8 +457,48 @@ async function isPortFree(port: number): Promise<boolean> {
   }
 }
 
+async function findPort(): Promise<number> {
+  // If the user explicitly asked for a port, use it as-is
+  if (portExplicit) {
+    return preferredPort;
+  }
+
+  // Check if an existing web-ait server is already running
+  const existingPid = await readPidFile();
+  if (existingPid && isProcessRunning(existingPid)) {
+    console.error(
+      `web-ait is already running (PID ${existingPid}) on port ${DEFAULT_PORT}.\n` +
+      `  → Use --stop to shut it down, or --port <n> to start a second instance.`
+    );
+    process.exit(1);
+  }
+
+  // Clean up stale PID file if the process is gone
+  if (existingPid) {
+    await removePidFile();
+  }
+
+  if (await isPortFree(DEFAULT_PORT)) return DEFAULT_PORT;
+
+  // Default port is taken by something else — warn rather than silently starting a duplicate
+  console.error(
+    `Port ${DEFAULT_PORT} is in use (by another application).\n` +
+    `  → Use --port <n> to pick a different port.`
+  );
+  process.exit(1);
+}
+
 // --- Start server ---
 const port = await findPort();
+await writePidFile();
+
+// Clean up PID file on exit
+function cleanup() {
+  try { require("node:fs").unlinkSync(PID_FILE); } catch {}
+  process.exit(0);
+}
+process.on("SIGINT", cleanup);
+process.on("SIGTERM", cleanup);
 
 const server = Bun.serve({
   port,
