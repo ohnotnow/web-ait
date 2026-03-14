@@ -97,6 +97,10 @@ alias webait='bun run /path/to/web-ait/server.ts --client'
 
 Workflow: run `webait-server` once, then `cd` into any project and run `webait` to add it to the dashboard.
 
+### Demo Mode
+
+If you want a rather flashier, noiser dashboard (which gives a little more impractical but 'wow' feel), append `?demo` to the url.  The visuals should still work ok over a video call - it's not _too_ out there...
+
 ## Licence
 
 [MIT](LICENSE)
