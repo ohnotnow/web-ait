@@ -57,4 +57,5 @@ Render pipeline: groups issues into epic columns, sorts completed to right, reco
 
 SSE reconnects with exponential backoff (1s, capped at 15s).
 
-`?demo` query param enables a flashier UI mode.
+`?demo` query param enables a flashier UI mode. Note: all demo mode features/css/styling should still err on the conservative side of "Does this work over a Microsoft Teams video call?"
+
