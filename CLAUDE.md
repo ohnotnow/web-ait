@@ -1,111 +1,60 @@
 ---
-description: Use Bun instead of Node.js, npm, pnpm, or vite.
+description: Project conventions and architecture for web-ait
 globs: "*.ts, *.tsx, *.html, *.css, *.js, *.jsx, package.json"
-alwaysApply: false
+alwaysApply: true
 ---
 
-Default to using Bun instead of Node.js.
+# web-ait
 
-- Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
-- Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
-- Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
-- Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
-- Bun automatically loads .env, so don't use dotenv.
+Real-time web dashboard for [ait](https://github.com/ohnotnow/agent-issue-tracker). Polls local SQLite databases via the `ait` CLI and streams updates to the browser over SSE.
 
-## APIs
+## Architecture
 
-- `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
-- `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
-- `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
-- `WebSocket` is built-in. Don't use `ws`.
-- Prefer `Bun.file` over `node:fs`'s readFile/writeFile
-- Bun.$`ls` instead of execa.
+Two files:
 
-## Testing
+- `server.ts` — Bun.serve() entry point: CLI modes, multi-project polling, SSE broadcast
+- `index.html` — Single-page dashboard: all CSS + JS inline, no framework
 
-Use `bun test` to run tests.
+## Bun
 
-```ts#index.test.ts
-import { test, expect } from "bun:test";
+Use Bun for everything. No Node.js, no npm/yarn/pnpm, no vite, no express.
 
-test("hello world", () => {
-  expect(1).toBe(1);
-});
-```
+- `bun run dev` — starts with --hot for live reload
+- `bun test` — run tests (import from `bun:test`)
+- `Bun.serve()` for HTTP/WebSocket/SSE
+- `bun:sqlite` for SQLite (not better-sqlite3)
+- `Bun.file` over node:fs readFile/writeFile
+- `Bun.$` for shell commands (not execa)
+- Bun auto-loads .env — no dotenv
 
-## Frontend
+## Server (server.ts)
 
-Use HTML imports with `Bun.serve()`. Don't use `vite`. HTML imports fully support React, CSS, Tailwind.
+Three CLI modes:
+- `--server` (or pass path args): start dashboard, poll projects
+- `--client`: register current directory and exit
+- `--stop`: graceful shutdown via PID file
 
-Server:
+Key flags: `--port` (default 6174), `--poll` (default 3s), `--ait-path`, `--localhost`
 
-```ts#index.ts
-import index from "./index.html"
+Data flow: poll timer -> read registration file (`~/.config/web-ait/projects.txt`) -> shell out to `ait --db <path> list --long --all` and `ait --db <path> status` per project -> hash output -> broadcast via SSE if changed.
 
-Bun.serve({
-  routes: {
-    "/": index,
-    "/api/users/:id": {
-      GET: (req) => {
-        return new Response(JSON.stringify({ id: req.params.id }));
-      },
-    },
-  },
-  // optional websocket support
-  websocket: {
-    open: (ws) => {
-      ws.send("Hello, world!");
-    },
-    message: (ws, message) => {
-      ws.send(message);
-    },
-    close: (ws) => {
-      // handle close
-    }
-  },
-  development: {
-    hmr: true,
-    console: true,
-  }
-})
-```
+SSE named events: `projects` (list + statuses), `update` (single project data), `removed`.
 
-HTML files can import .tsx, .jsx or .js files directly and Bun's bundler will transpile & bundle automatically. `<link>` tags can point to stylesheets and Bun's CSS bundler will bundle.
+Routes: `/` (index.html), `/events` (SSE), `/api/projects` (DELETE to remove).
 
-```html#index.html
-<html>
-  <body>
-    <h1>Hello, world!</h1>
-    <script type="module" src="./frontend.tsx"></script>
-  </body>
-</html>
-```
+Projects stored in `Map<string, ProjectState>` keyed by absolute path. PID file at `~/.config/web-ait/server.pid`.
 
-With the following `frontend.tsx`:
+## Frontend (index.html)
 
-```tsx#frontend.tsx
-import React from "react";
+All inline — CSS custom properties for colours, dark theme default, light via prefers-color-scheme.
 
-// import .css files directly and it works
-import './index.css';
+JS data layer:
+- `projectsData` (Map: path -> {issues, status, config})
+- `projectsList` (array from server)
+- `activeProjectId` (current view)
 
-import { createRoot } from "react-dom/client";
+Render pipeline: groups issues into epic columns, sorts completed to right, reconciles DOM in place (no innerHTML wipe) so CSS transitions work. Columns can be active, collapsed, or pinned.
 
-const root = createRoot(document.body);
+SSE reconnects with exponential backoff (1s, capped at 15s).
 
-export default function Frontend() {
-  return <h1>Hello, world!</h1>;
-}
-
-root.render(<Frontend />);
-```
-
-Then, run index.ts
-
-```sh
-bun --hot ./index.ts
-```
-
-For more information, read the Bun API docs in `node_modules/bun-types/docs/**.md`.
+`?demo` query param enables a flashier UI mode.

@@ -646,6 +646,50 @@
       background: var(--accent);
     }
 
+    /* ── Elapsed timer ── */
+    .elapsed-timer {
+      position: fixed;
+      bottom: 1rem;
+      right: 1rem;
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.35rem 0.7rem;
+      z-index: 100;
+      display: none;
+      opacity: 0.7;
+      transition: opacity 0.2s ease;
+    }
+    .elapsed-timer:hover { opacity: 1; }
+    .elapsed-timer.visible { display: block; }
+    .elapsed-timer-label {
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      margin-bottom: 0.1rem;
+    }
+    body.demo-mode .elapsed-timer {
+      font-size: 0.95rem;
+      opacity: 0.9;
+      border-color: var(--accent);
+      box-shadow: 0 0 12px rgba(91,138,240,0.15);
+    }
+
+    .all-clear-elapsed {
+      font-family: 'IBM Plex Mono', monospace;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--accent);
+      letter-spacing: 0.04em;
+    }
+    body.demo-mode .all-clear-elapsed {
+      font-size: 1.4rem;
+    }
+
     /* ── Empty state ── */
     .empty {
       padding: 1rem 0.75rem;
@@ -1220,7 +1264,12 @@
     <span class="all-clear-dot"></span>
     <span class="all-clear-text">all clear</span>
     <span class="all-clear-counts" id="all-clear-counts"></span>
+    <span class="all-clear-elapsed" id="all-clear-elapsed"></span>
     <button class="all-clear-projects" id="all-clear-projects">switch project</button>
+  </div>
+  <div class="elapsed-timer" id="elapsed-timer">
+    <div class="elapsed-timer-label">elapsed</div>
+    <div id="elapsed-timer-value"></div>
   </div>
   <div class="reconnecting" id="reconnecting">reconnecting&hellip;</div>
   <div class="sidebar-overlay" id="sidebar-overlay"></div>
@@ -1245,10 +1294,64 @@
     const sidebarEl = document.getElementById("sidebar");
     const sidebarOverlayEl = document.getElementById("sidebar-overlay");
     const sidebarListEl = document.getElementById("sidebar-list");
+    const elapsedTimerEl = document.getElementById("elapsed-timer");
+    const elapsedTimerValueEl = document.getElementById("elapsed-timer-value");
+    const allClearElapsedEl = document.getElementById("all-clear-elapsed");
+
+    // ── Elapsed timer ──
+    let elapsedStartTime = null;   // per-project Map: projectId -> Date
+    const projectStartTimes = new Map();
+
+    function formatElapsed(ms) {
+      const totalSec = Math.floor(ms / 1000);
+      const h = Math.floor(totalSec / 3600);
+      const m = Math.floor((totalSec % 3600) / 60);
+      const s = totalSec % 60;
+      if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m ${String(s).padStart(2, "0")}s`;
+      if (m > 0) return `${m}m ${String(s).padStart(2, "0")}s`;
+      return `${s}s`;
+    }
+
+    function getProjectStartTime(issues) {
+      let earliest = null;
+      for (const issue of issues) {
+        if (issue.claimed_at) {
+          const t = new Date(issue.claimed_at);
+          if (!earliest || t < earliest) earliest = t;
+        }
+      }
+      return earliest;
+    }
+
+    function getProjectEndTime(issues) {
+      let latest = null;
+      for (const issue of issues) {
+        const t = issue.closed_at ? new Date(issue.closed_at) : null;
+        if (t && (!latest || t > latest)) latest = t;
+      }
+      return latest;
+    }
+
+    function updateElapsedTimer() {
+      const start = projectStartTimes.get(activeProjectId);
+      if (!start) {
+        elapsedTimerEl.classList.remove("visible");
+        return;
+      }
+      elapsedTimerEl.classList.add("visible");
+      elapsedTimerValueEl.textContent = formatElapsed(Date.now() - start.getTime());
+    }
+
+    setInterval(updateElapsedTimer, 1000);
 
     // ── Demo mode ──
     const isDemo = new URLSearchParams(window.location.search).has("demo");
-    if (isDemo) document.body.classList.add("demo-mode");
+    if (isDemo) {
+      document.body.classList.add("demo-mode");
+      setInterval(() => {
+        projectTimeEl.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      }, 60_000);
+    }
 
     // Activity ticker (demo mode)
     const activityLog = [];
@@ -1492,11 +1595,16 @@
       const counts = data.status?.counts || {};
       const issues = data.issues?.issues || [];
 
+      // Track start time for elapsed timer
+      const startTime = getProjectStartTime(issues);
+      if (startTime) projectStartTimes.set(activeProjectId, startTime);
+      updateElapsedTimer();
+
       // Project card
       const prefix = config.prefix || "—";
       const basename = prefix.split("/").pop().replace(/[-_]/g, " ");
       projectNameEl.textContent = basename;
-      projectTimeEl.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+      projectTimeEl.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
       // ── Summary stat cards ──
       const allTasks = issues.filter(i => i.type === "task");
@@ -1691,6 +1799,14 @@
         const closed = issues.filter(i => i.status === "closed").length;
         const cancelled = issues.filter(i => i.status === "cancelled").length;
         allClearCountsEl.textContent = `${closed} closed · ${cancelled} cancelled · ${total} total`;
+        // Show total elapsed on all-clear
+        const endTime = getProjectEndTime(issues);
+        if (startTime && endTime) {
+          allClearElapsedEl.textContent = `completed in ${formatElapsed(endTime.getTime() - startTime.getTime())}`;
+        } else {
+          allClearElapsedEl.textContent = "";
+        }
+        elapsedTimerEl.classList.remove("visible");
         return;
       } else {
         boardEl.style.display = "";
