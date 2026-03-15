@@ -652,31 +652,34 @@
       bottom: 1rem;
       right: 1rem;
       font-family: 'IBM Plex Mono', monospace;
-      font-size: 0.8rem;
-      color: var(--text-muted);
-      background: var(--card);
+      font-size: 0.85rem;
+      color: var(--text);
+      background: var(--bg);
       border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 0.35rem 0.7rem;
-      z-index: 100;
+      border-radius: 8px;
+      padding: 0.5rem 1rem;
+      z-index: 200;
       display: none;
-      opacity: 0.7;
       transition: opacity 0.2s ease;
     }
-    .elapsed-timer:hover { opacity: 1; }
     .elapsed-timer.visible { display: block; }
     .elapsed-timer-label {
       font-size: 0.6rem;
       text-transform: uppercase;
       letter-spacing: 0.05em;
       color: var(--text-dim);
-      margin-bottom: 0.1rem;
+      margin-bottom: 0.15rem;
     }
     body.demo-mode .elapsed-timer {
-      font-size: 0.95rem;
-      opacity: 0.9;
+      font-size: 1.4rem;
+      padding: 0.75rem 1.5rem;
       border-color: var(--accent);
-      box-shadow: 0 0 12px rgba(91,138,240,0.15);
+      box-shadow: 0 0 20px rgba(91,138,240,0.25);
+      background: var(--bg);
+    }
+    body.demo-mode .elapsed-timer-label {
+      font-size: 0.7rem;
+      color: var(--accent);
     }
 
     .all-clear-elapsed {
