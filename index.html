@@ -830,9 +830,11 @@
     }
 
     .sidebar-item {
-      display: flex;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      grid-template-rows: auto auto;
       align-items: center;
-      gap: 0.6rem;
+      gap: 0 0.6rem;
       padding: 0.6rem 1rem;
       cursor: pointer;
       transition: background 0.15s ease;
@@ -854,6 +856,7 @@
       height: 8px;
       border-radius: 50%;
       flex-shrink: 0;
+      grid-row: 1;
     }
 
     .sidebar-dot-active {
@@ -873,6 +876,15 @@
     .sidebar-name {
       flex: 1;
       min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .sidebar-agents {
+      font-size: 0.7rem;
+      color: var(--status-progress);
+      font-family: 'IBM Plex Mono', monospace;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -917,6 +929,13 @@
       position: absolute;
       top: 0.5rem;
       right: 0.5rem;
+    }
+
+    .project-agents {
+      font-size: 0.6rem;
+      color: var(--status-progress);
+      font-family: 'IBM Plex Mono', monospace;
+      opacity: 0.85;
     }
 
     .summary-stat-number {
@@ -1254,6 +1273,7 @@
     <div class="summary-top">
       <div class="summary-stat summary-stat-project" id="project-card">
         <span class="summary-stat-number" id="project-name">—<span class="project-chevron">▼</span></span>
+        <span class="project-agents" id="project-agents"></span>
         <span class="summary-stat-label" id="project-time">—</span>
         <span class="header-status" id="status-dot"></span>
       </div>
@@ -1283,6 +1303,7 @@
 
   <script>
     const projectNameEl = document.getElementById("project-name");
+    const projectAgentsEl = document.getElementById("project-agents");
     const projectTimeEl = document.getElementById("project-time");
     const boardEl = document.getElementById("board");
     const statusDot = document.getElementById("status-dot");
@@ -1462,6 +1483,18 @@
         item.appendChild(dot);
         item.appendChild(name);
         item.appendChild(remove);
+
+        // Show active agent names
+        const data = projectsData.get(p.id);
+        const agents = getActiveAgents(data?.issues?.issues || []);
+        if (agents.length > 0) {
+          const agentEl = document.createElement("span");
+          agentEl.className = "sidebar-agents";
+          agentEl.style.gridColumn = "2";
+          agentEl.textContent = agents.join(", ");
+          item.appendChild(agentEl);
+        }
+
         item.addEventListener("click", () => {
           switchToProject(p.id);
           closeSidebar();
@@ -1592,6 +1625,18 @@
       };
     }
 
+    // ── Extract active agent names from issues ──
+    function getActiveAgents(issues) {
+      if (!issues) return [];
+      const agents = new Set();
+      for (const i of issues) {
+        if (i.claimed_by && i.status !== "closed" && i.status !== "cancelled") {
+          agents.add(i.claimed_by);
+        }
+      }
+      return [...agents];
+    }
+
     // ── Render with in-place DOM updates for smooth transitions ──
     function render(data) {
       const config = data.config || {};
@@ -1607,6 +1652,8 @@
       const prefix = config.prefix || "—";
       const basename = prefix.split("/").pop().replace(/[-_]/g, " ");
       projectNameEl.textContent = basename;
+      const agents = getActiveAgents(issues);
+      projectAgentsEl.textContent = agents.length > 0 ? agents.join(", ") : "";
       projectTimeEl.textContent = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
       // ── Summary stat cards ──
