@@ -7,6 +7,7 @@ import { mkdir } from "node:fs/promises";
 const CONFIG_DIR = resolve(homedir(), ".config", "web-ait");
 const PROJECTS_FILE = resolve(CONFIG_DIR, "projects.txt");
 const PID_FILE = resolve(CONFIG_DIR, "server.pid");
+const TIMER_RESETS_FILE = resolve(CONFIG_DIR, "timer-resets.json");
 
 // --- CLI argument parsing ---
 const args = process.argv.slice(2);
@@ -175,6 +176,29 @@ const sseClients = new Set<ReadableStreamDefaultController>();
 const previousTaskStates = new Map<string, Map<string, { status: string; claimed_by: string | null }>>();
 let initialPollDone = false;
 
+// --- Per-project elapsed-timer reset anchors (projectPath -> ISO timestamp) ---
+const projectTimerResets = new Map<string, string>();
+
+async function loadTimerResets(): Promise<void> {
+  try {
+    const raw = await Bun.file(TIMER_RESETS_FILE).text();
+    const data = JSON.parse(raw);
+    if (data && typeof data === "object") {
+      for (const [path, iso] of Object.entries(data)) {
+        if (typeof iso === "string") projectTimerResets.set(path, iso);
+      }
+    }
+  } catch {
+    // file doesn't exist yet — that's fine
+  }
+}
+
+async function saveTimerResets(): Promise<void> {
+  await ensureProjectsDir();
+  const data = Object.fromEntries(projectTimerResets.entries());
+  await Bun.write(TIMER_RESETS_FILE, JSON.stringify(data, null, 2));
+}
+
 // --- ait command helpers ---
 async function runAit(dbPath: string, command: string[]): Promise<string> {
   return await $`${aitPath} --db ${dbPath} ${command}`.text();
@@ -270,12 +294,15 @@ async function syncProjectsFromFile(): Promise<boolean> {
   }
 
   // Remove projects no longer in file
+  let resetsChanged = false;
   for (const key of projects.keys()) {
     if (!paths.includes(key)) {
       projects.delete(key);
+      if (projectTimerResets.delete(key)) resetsChanged = true;
       changed = true;
     }
   }
+  if (resetsChanged) await saveTimerResets();
 
   return changed;
 }
@@ -391,6 +418,7 @@ async function poll(): Promise<void> {
         issues: state.cachedData!.issues,
         status: state.cachedData!.status,
         config: state.cachedData!.config,
+        timerResetAt: projectTimerResets.get(state.projectPath) || null,
         changedTaskIds,
         completedEpicIds,
       });
@@ -425,6 +453,7 @@ function handleSSE(): Response {
               issues: state.cachedData.issues,
               status: state.cachedData.status,
               config: state.cachedData.config,
+              timerResetAt: projectTimerResets.get(state.projectPath) || null,
             })}\n\n`,
           );
         }
@@ -489,6 +518,7 @@ async function findPort(): Promise<number> {
 }
 
 // --- Start server ---
+await loadTimerResets();
 const port = await findPort();
 await writePidFile();
 
@@ -516,6 +546,7 @@ const server = Bun.serve({
       if (path && projects.has(path)) {
         projects.delete(path);
         await removeProjectFromFile(path);
+        if (projectTimerResets.delete(path)) await saveTimerResets();
         broadcastEvent("removed", { projectId: path });
         broadcastEvent("projects", buildProjectsList());
         return new Response(JSON.stringify({ ok: true }), {
@@ -524,6 +555,33 @@ const server = Bun.serve({
       }
       return new Response(JSON.stringify({ error: "not found" }), {
         status: 404,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (url.pathname === "/api/projects/timer/reset" && req.method === "POST") {
+      const path = url.searchParams.get("path");
+      const state = path ? projects.get(path) : null;
+      if (!state) {
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const now = new Date().toISOString();
+      projectTimerResets.set(state.projectPath, now);
+      await saveTimerResets();
+      // Re-broadcast the cached data so every connected client sees the new anchor immediately.
+      if (state.cachedData) {
+        broadcastEvent("update", {
+          projectId: state.projectPath,
+          issues: state.cachedData.issues,
+          status: state.cachedData.status,
+          config: state.cachedData.config,
+          timerResetAt: now,
+        });
+      }
+      return new Response(JSON.stringify({ ok: true, timerResetAt: now }), {
         headers: { "Content-Type": "application/json" },
       });
     }

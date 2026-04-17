@@ -318,6 +318,15 @@
     /* ══════════════════════════════════════════════
        Board + columns
        ══════════════════════════════════════════════ */
+    .board-wrap {
+      flex: 1;
+      display: flex;
+      flex-direction: row;
+      min-height: 0;
+      border-top: 2px solid var(--lc-amber);
+      background: var(--lc-bg);
+    }
+
     .board {
       flex: 1;
       display: flex;
@@ -325,8 +334,92 @@
       overflow-x: auto;
       overflow-y: hidden;
       min-height: 0;
-      border-top: 2px solid var(--lc-amber);
+      min-width: 0;
       background: var(--lc-bg);
+    }
+
+    /* ══════════════════════════════════════════════
+       Archive rail — completed epics as vertical tabs
+       (hidden when empty; opens one epic at a time)
+       ══════════════════════════════════════════════ */
+    .archive-rail {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      padding: 10px 6px;
+      flex-shrink: 0;
+      width: 50px;
+      background: var(--lc-bg);
+      border-left: 2px solid var(--lc-line);
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    .archive-rail:empty { display: none; }
+
+    .archive-tab {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 4px;
+      background: var(--lc-surface);
+      color: var(--lc-dim);
+      border: 1px solid var(--lc-line);
+      border-radius: 10px;
+      cursor: pointer;
+      flex-shrink: 0;
+      min-height: 120px;
+      transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    }
+
+    .archive-tab:hover {
+      color: var(--lc-amber);
+      border-color: var(--lc-amber);
+    }
+
+    .archive-tab.active {
+      background: var(--lc-amber);
+      color: var(--lc-bg);
+      border-color: var(--lc-amber);
+    }
+
+    .archive-tab-title {
+      writing-mode: vertical-lr;
+      text-orientation: mixed;
+      font-family: 'Barlow Condensed', 'Oswald', sans-serif;
+      font-weight: 700;
+      font-size: 13px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-height: 100%;
+      min-height: 0;
+      flex: 1 1 auto;
+    }
+
+    .archive-tab-count {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      opacity: 0.8;
+      flex-shrink: 0;
+    }
+
+    .archive-tab-priority {
+      font-family: 'Barlow Condensed', 'Oswald', sans-serif;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      flex-shrink: 0;
+    }
+
+    /* Column opened from the archive rail gets a subtle amber marker */
+    .column.archive-open {
+      border-left: 2px solid var(--lc-amber);
     }
 
     .column {
@@ -955,6 +1048,21 @@
       display: none;
       letter-spacing: 1px;
       box-shadow: 0 0 12px rgba(255,176,46,0.25);
+      cursor: pointer;
+      user-select: none;
+      transition: filter 0.2s ease, transform 0.2s ease;
+    }
+
+    .elapsed-timer:hover { filter: brightness(1.08); }
+    .elapsed-timer:active { transform: scale(0.98); }
+
+    .elapsed-timer.reset-flash {
+      animation: elapsed-flash 0.6s ease;
+    }
+
+    @keyframes elapsed-flash {
+      0%   { background: var(--lc-green); }
+      100% { background: var(--lc-amber); }
     }
 
     .elapsed-timer.visible { display: block; }
@@ -1151,7 +1259,10 @@
     body.focus-active .task-closed + .task-claimed,
     body.focus-active .task-cancelled + .task-claimed { display: none; }
     body.focus-active .column.collapsed,
-    body.focus-active .column-group.collapsed { display: none; }
+    body.focus-active .column-group.collapsed,
+    body.focus-active .archive-rail,
+    body.focus-active .column.archive-open,
+    body.focus-active .column-group.archive-open { display: none; }
 
     /* Responsive */
     @media (max-width: 1400px) {
@@ -1331,7 +1442,10 @@
     </div>
     <div class="summary-progress" id="summary-progress"></div>
   </div>
-  <div class="board" id="board"></div>
+  <div class="board-wrap">
+    <div class="board" id="board"></div>
+    <div class="archive-rail" id="archive-rail"></div>
+  </div>
   <div class="all-clear" id="all-clear">
     <span class="all-clear-dot"></span>
     <span class="all-clear-text">all clear</span>
@@ -1355,6 +1469,7 @@
     const projectAgentsEl = document.getElementById("project-agents");
     const projectTimeEl = document.getElementById("project-time");
     const boardEl = document.getElementById("board");
+    const archiveRailEl = document.getElementById("archive-rail");
     const statusDot = document.getElementById("status-dot");
     const reconnectEl = document.getElementById("reconnecting");
     const allClearEl = document.getElementById("all-clear");
@@ -1372,11 +1487,14 @@
     const allClearElapsedEl = document.getElementById("all-clear-elapsed");
 
     // ── Elapsed timer ──
-    let elapsedStartTime = null;   // per-project Map: projectId -> Date
+    // Anchor = max(earliest claimed_at, server-side timerResetAt). The reset
+    // lets the user rebase the timer when a project has been idle for weeks
+    // and the "earliest claim" is no longer a meaningful start point.
     const projectStartTimes = new Map();
+    const projectTimerResets = new Map();   // projectId -> Date
 
     function formatElapsed(ms) {
-      const totalSec = Math.floor(ms / 1000);
+      const totalSec = Math.max(0, Math.floor(ms / 1000));
       const h = Math.floor(totalSec / 3600);
       const m = Math.floor((totalSec % 3600) / 60);
       const s = totalSec % 60;
@@ -1385,7 +1503,7 @@
       return `${s}s`;
     }
 
-    function getProjectStartTime(issues) {
+    function earliestClaimTime(issues) {
       let earliest = null;
       for (const issue of issues) {
         if (issue.claimed_at) {
@@ -1394,6 +1512,12 @@
         }
       }
       return earliest;
+    }
+
+    function getProjectStartTime(issues, resetAt) {
+      const earliest = earliestClaimTime(issues);
+      if (resetAt && earliest) return resetAt > earliest ? resetAt : earliest;
+      return resetAt || earliest;
     }
 
     function getProjectEndTime(issues) {
@@ -1416,6 +1540,22 @@
     }
 
     setInterval(updateElapsedTimer, 1000);
+
+    // Click the badge to rebase the anchor to "now" (server-side persisted).
+    elapsedTimerEl.addEventListener("click", async () => {
+      if (!activeProjectId) return;
+      try {
+        await fetch(`/api/projects/timer/reset?path=${encodeURIComponent(activeProjectId)}`, {
+          method: "POST",
+        });
+        elapsedTimerEl.classList.remove("reset-flash");
+        void elapsedTimerEl.offsetWidth;  // restart animation
+        elapsedTimerEl.classList.add("reset-flash");
+      } catch (e) {
+        console.error("timer reset failed:", e);
+      }
+    });
+    elapsedTimerEl.title = "Click to reset — rebases the timer to now";
 
     // ── Ops-terminal clock (HH:MM:SS UTC · OPS-01) ──
     function formatOpsClock(d) {
@@ -1455,7 +1595,29 @@
     let projectsList = [];             // [{id, name, status, path}, ...] from server
     let activeProjectId = null;
 
-    // Track which columns have been manually expanded (pinned open), per project
+    // ── Active project persisted in ?project=<name> ──
+    // We match on project name rather than path for a friendlier URL. If the
+    // requested project isn't in the list yet (or ever), we fall back to the
+    // default (first project) but remember the request so it still wins when
+    // the project shows up later.
+    let requestedProjectName = new URL(location.href).searchParams.get("project");
+
+    function findProjectByName(name) {
+      if (!name) return null;
+      const lower = name.toLowerCase();
+      return projectsList.find(p => p.name.toLowerCase() === lower) || null;
+    }
+
+    function updateProjectQueryParam(name) {
+      const url = new URL(location.href);
+      if (name) url.searchParams.set("project", name);
+      else url.searchParams.delete("project");
+      history.replaceState(null, "", url);
+    }
+
+    // Track which columns have been manually expanded (pinned open), per project.
+    // Used by initiative-internal collapsed columns — loose completed epics use
+    // openedArchive below instead.
     const pinnedColumnsPerProject = new Map();
     function getPinnedColumns() {
       if (!activeProjectId) return new Set();
@@ -1466,6 +1628,18 @@
     }
     // Alias for existing code compatibility
     let pinnedColumns = new Set();
+
+    // Which archive tab is currently opened (one at a time, per project).
+    const openedArchivePerProject = new Map();
+    let openedArchive = null;
+    function loadOpenedArchive() {
+      openedArchive = activeProjectId ? openedArchivePerProject.get(activeProjectId) || null : null;
+    }
+    function saveOpenedArchive() {
+      if (!activeProjectId) return;
+      if (openedArchive) openedArchivePerProject.set(activeProjectId, openedArchive);
+      else openedArchivePerProject.delete(activeProjectId);
+    }
 
     // Focus mode
     let focusMode = false;
@@ -1559,11 +1733,19 @@
       // Save current pinned columns
       if (activeProjectId) {
         pinnedColumnsPerProject.set(activeProjectId, new Set(pinnedColumns));
+        saveOpenedArchive();
       }
       activeProjectId = projectId;
       pinnedColumns = getPinnedColumns();
-      // Clear board for clean re-render
+      loadOpenedArchive();
+      // User-driven switch — overwrite any stale requested-project param so
+      // the URL reflects the actual active project.
+      const proj = projectsList.find(p => p.id === projectId);
+      requestedProjectName = proj?.name || null;
+      updateProjectQueryParam(requestedProjectName);
+      // Clear board + archive rail for clean re-render
       boardEl.innerHTML = "";
+      archiveRailEl.replaceChildren();
       const data = projectsData.get(projectId);
       if (data) render(data);
       renderSidebar();
@@ -1584,10 +1766,16 @@
       source.addEventListener("projects", (e) => {
         projectsList = JSON.parse(e.data);
         document.body.classList.toggle("has-multiple-projects", projectsList.length > 1);
-        // Auto-select first project if none active
+        // Auto-select a project if none active — prefer the one named in the
+        // URL query param, otherwise fall back to the first project.
         if (!activeProjectId && projectsList.length > 0) {
-          activeProjectId = projectsList[0].id;
+          const requested = findProjectByName(requestedProjectName);
+          const target = requested || projectsList[0];
+          activeProjectId = target.id;
+          requestedProjectName = target.name;
+          updateProjectQueryParam(requestedProjectName);
           pinnedColumns = getPinnedColumns();
+          loadOpenedArchive();
         }
         renderSidebar();
       });
@@ -1599,6 +1787,8 @@
           status: msg.status,
           config: msg.config,
         });
+        if (msg.timerResetAt) projectTimerResets.set(msg.projectId, new Date(msg.timerResetAt));
+        else projectTimerResets.delete(msg.projectId);
         // Render if this is the active project
         if (msg.projectId === activeProjectId) {
           render(projectsData.get(activeProjectId));
@@ -1655,10 +1845,17 @@
         const msg = JSON.parse(e.data);
         projectsData.delete(msg.projectId);
         pinnedColumnsPerProject.delete(msg.projectId);
+        openedArchivePerProject.delete(msg.projectId);
+        projectTimerResets.delete(msg.projectId);
+        projectStartTimes.delete(msg.projectId);
         // If we were viewing this project, switch to another
         if (activeProjectId === msg.projectId) {
-          activeProjectId = projectsList.length > 0 ? projectsList[0].id : null;
+          const fallback = projectsList.length > 0 ? projectsList[0] : null;
+          activeProjectId = fallback?.id || null;
+          requestedProjectName = fallback?.name || null;
+          updateProjectQueryParam(requestedProjectName);
           pinnedColumns = getPinnedColumns();
+          loadOpenedArchive();
           boardEl.innerHTML = "";
           if (activeProjectId) {
             const data = projectsData.get(activeProjectId);
@@ -1694,9 +1891,11 @@
       const counts = data.status?.counts || {};
       const issues = data.issues?.issues || [];
 
-      // Track start time for elapsed timer
-      const startTime = getProjectStartTime(issues);
+      // Track start time for elapsed timer — max(earliest claim, reset time).
+      const resetAt = projectTimerResets.get(activeProjectId) || null;
+      const startTime = getProjectStartTime(issues, resetAt);
       if (startTime) projectStartTimes.set(activeProjectId, startTime);
+      else projectStartTimes.delete(activeProjectId);
       updateElapsedTimer();
 
       // Project card
@@ -1885,8 +2084,19 @@
         });
       }
 
-      // Active first, then completed (sorted to the right)
-      const columns = [...activeColumns, ...completedColumns];
+      // Loose completed epics no longer sit on the board — they live in the
+      // archive rail. If one is currently opened, render it at the right end
+      // of the main board (full column, not collapsed).
+      if (openedArchive && !completedColumns.some(e => e.epic.id === openedArchive)) {
+        // The opened epic is no longer completed (or was removed) — clear.
+        openedArchive = null;
+        saveOpenedArchive();
+      }
+      const openedEntry = openedArchive
+        ? completedColumns.find(e => e.epic.id === openedArchive)
+        : null;
+
+      const columns = openedEntry ? [...activeColumns, openedEntry] : [...activeColumns];
 
       // All-clear state: no active columns and no standalone tasks
       const hasActiveInitiativeWork = initiativeSections.some(s => s.columns.some(e => !e.completed));
@@ -1899,14 +2109,16 @@
         const closed = issues.filter(i => i.status === "closed").length;
         const cancelled = issues.filter(i => i.status === "cancelled").length;
         allClearCountsEl.textContent = `${closed} closed · ${cancelled} cancelled · ${total} total`;
-        // Show total elapsed on all-clear
+        // Show total elapsed on all-clear — if reset happened after the last
+        // close, endTime < startTime, so skip the label rather than show "0s".
         const endTime = getProjectEndTime(issues);
-        if (startTime && endTime) {
+        if (startTime && endTime && endTime.getTime() > startTime.getTime()) {
           allClearElapsedEl.textContent = `completed in ${formatElapsed(endTime.getTime() - startTime.getTime())}`;
         } else {
           allClearElapsedEl.textContent = "";
         }
         elapsedTimerEl.classList.remove("visible");
+        archiveRailEl.replaceChildren();
         return;
       } else {
         boardEl.style.display = "";
@@ -1964,8 +2176,11 @@
             el = createGroup(epic, subColumns);
             boardEl.appendChild(el);
           }
-          if (completed && !pinnedColumns.has(epic.id)) el.classList.add("collapsed");
-          else el.classList.remove("collapsed");
+          // Loose completed epics live in the archive rail. If we reach a
+          // completed one here it's because the user opened it — show it
+          // fully expanded with an amber accent.
+          el.classList.remove("collapsed");
+          el.classList.toggle("archive-open", !!completed);
         } else {
           const { epic, children, completed } = item.entry;
           if (el && !el.classList.contains("column-group") && !el.classList.contains("initiative-section")) {
@@ -1975,8 +2190,8 @@
             el = createColumn(epic, children);
             boardEl.appendChild(el);
           }
-          if (completed && !pinnedColumns.has(epic.id)) el.classList.add("collapsed");
-          else el.classList.remove("collapsed");
+          el.classList.remove("collapsed");
+          el.classList.toggle("archive-open", !!completed);
         }
 
         // Ensure order
@@ -1984,6 +2199,68 @@
           prevEl.after(el);
         }
         prevEl = el;
+      }
+
+      // Archive rail — always after the board reconcile so "active" state
+      // reflects any change to openedArchive.
+      renderArchiveRail(completedColumns);
+    }
+
+    // ── Archive rail ──
+    // Builds the rail of vertical tabs for loose completed epics. Clicking a
+    // tab toggles openedArchive (single-open mode — clicking another swaps).
+    function renderArchiveRail(completedEntries) {
+      // Sort stable by title so tabs don't jump around as status hashes change.
+      const entries = [...completedEntries].sort((a, b) => {
+        return (a.epic.title || "").localeCompare(b.epic.title || "");
+      });
+
+      archiveRailEl.replaceChildren();
+      for (const entry of entries) {
+        const { epic } = entry;
+        const children = entry.grouped
+          ? entry.subColumns.flatMap(sc => sc.children)
+          : entry.children;
+        const done = children.filter(t => t.status === "closed" || t.status === "cancelled").length;
+
+        const tab = document.createElement("button");
+        tab.type = "button";
+        tab.className = "archive-tab" + (openedArchive === epic.id ? " active" : "");
+        tab.dataset.id = epic.id;
+        tab.title = epic.title || "";
+
+        if (epic.priority) {
+          const prio = document.createElement("span");
+          prio.className = `archive-tab-priority pr-${epic.priority}`;
+          prio.textContent = epic.priority;
+          tab.appendChild(prio);
+        }
+
+        const title = document.createElement("span");
+        title.className = "archive-tab-title";
+        title.textContent = epic.title || "";
+        tab.appendChild(title);
+
+        if (children.length) {
+          const count = document.createElement("span");
+          count.className = "archive-tab-count";
+          count.textContent = `${done}/${children.length}`;
+          tab.appendChild(count);
+        }
+
+        tab.addEventListener("click", () => {
+          const willOpen = openedArchive !== epic.id;
+          openedArchive = willOpen ? epic.id : null;
+          saveOpenedArchive();
+          const data = projectsData.get(activeProjectId);
+          if (data) render(data);
+          if (willOpen) {
+            const opened = boardEl.querySelector(`[data-id="${epic.id}"]`);
+            opened?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "end" });
+          }
+        });
+
+        archiveRailEl.appendChild(tab);
       }
     }
 

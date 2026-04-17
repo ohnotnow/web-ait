@@ -90,7 +90,7 @@ Named SSE events (not plain `data:` messages):
 | Event | Payload | When |
 |-------|---------|------|
 | `projects` | `[{id, name, status, path}, ...]` | On connect and whenever the project list or any project's status changes |
-| `update` | `{projectId, issues, status, config}` | When a specific project's data changes |
+| `update` | `{projectId, issues, status, config, timerResetAt}` | When a specific project's data changes (or the elapsed timer is reset). `timerResetAt` is null until the user clicks the badge to reset. |
 | `removed` | `{projectId}` | When a project is removed via the API |
 
 On first connect the server sends the `projects` list, then an `update` for each project that has cached data.
@@ -123,6 +123,7 @@ On first connect the server sends the `projects` list, then an `update` for each
 | `/` | GET | Serves `index.html` |
 | `/events` | GET | SSE stream (named events) |
 | `/api/projects` | DELETE | Removes a project (query param: `path`) |
+| `/api/projects/timer/reset` | POST | Rebases the elapsed-timer anchor for a project to now (query param: `path`). Persisted to `~/.config/web-ait/timer-resets.json`. |
 | `*` | — | 404 |
 
 ## Frontend Architecture (index.html)
