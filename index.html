@@ -325,9 +325,6 @@
       min-height: 0;
       border-top: 2px solid var(--lc-amber);
       background: var(--lc-bg);
-      /* Activity ticker is position: fixed at the bottom (140px tall) —
-         reserve space so the board + archive rail don't disappear behind it. */
-      padding-bottom: 140px;
     }
 
     .board {
@@ -339,6 +336,10 @@
       min-height: 0;
       min-width: 0;
       background: var(--lc-bg);
+      /* Activity ticker is position: fixed at the bottom (140px tall) — the
+         board leaves room so its columns don't hide behind it. The archive
+         rail handles this itself via .has-archive (see below). */
+      padding-bottom: 140px;
     }
 
     /* ══════════════════════════════════════════════
@@ -1343,7 +1344,12 @@
       border-top: 1px solid var(--lc-line);
       z-index: 50;
       overflow: hidden;
+      transition: right 0.3s ease;
     }
+
+    /* When the archive rail has tabs, the activity bar pulls in from the
+       right so the rail can run full page height. Rail width is 50px. */
+    body.has-archive .activity-ticker { right: 50px; }
 
     .ticker-header {
       width: 140px;
@@ -1752,6 +1758,7 @@
       // Clear board + archive rail for clean re-render
       boardEl.innerHTML = "";
       archiveRailEl.replaceChildren();
+      document.body.classList.remove("has-archive");
       const data = projectsData.get(projectId);
       if (data) render(data);
       renderSidebar();
@@ -2125,6 +2132,7 @@
         }
         elapsedTimerEl.classList.remove("visible");
         archiveRailEl.replaceChildren();
+      document.body.classList.remove("has-archive");
         return;
       } else {
         boardEl.style.display = "";
@@ -2268,6 +2276,8 @@
 
         archiveRailEl.appendChild(tab);
       }
+
+      document.body.classList.toggle("has-archive", entries.length > 0);
     }
 
     // ── Helpers for mini progress bars ──
