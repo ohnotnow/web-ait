@@ -171,7 +171,7 @@ type ProjectState = {
 const projects = new Map<string, ProjectState>();
 const sseClients = new Set<ReadableStreamDefaultController>();
 
-// --- Activity tracking (demo mode change detection) ---
+// --- Activity tracking (drives the activity log + flash highlights) ---
 const previousTaskStates = new Map<string, Map<string, { status: string; claimed_by: string | null }>>();
 let initialPollDone = false;
 

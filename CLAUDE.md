@@ -57,5 +57,5 @@ Render pipeline: groups issues into epic columns, sorts completed to right, reco
 
 SSE reconnects with exponential backoff (1s, capped at 15s).
 
-`?demo` query param enables a flashier UI mode. Note: all demo mode features/css/styling should still err on the conservative side of "Does this work over a Microsoft Teams video call?"
+Visual styling is LCARS-inspired (retro-futuristic ops terminal): amber brand elbow, coloured pill stats, glowing priority dots, bottom activity log. Keep any changes conservative enough to hold up over a Microsoft Teams video call — solid colours, slow transitions, no heavy blur/glow.
 

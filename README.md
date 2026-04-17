@@ -111,10 +111,6 @@ alias webait-stop='bun run /path/to/web-ait/server.ts --stop'
 
 Workflow: run `webait-server` once, then `cd` into any project and run `webait` to add it to the dashboard. Run `webait-stop` when you're done.
 
-### Demo mode
-
-If you want a flashier, noisier dashboard, append `?demo` to the URL. It's impractical but looks good on a video call. Not _too_ out there.
-
 ## Licence
 
 [MIT](LICENSE)
