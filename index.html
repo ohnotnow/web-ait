@@ -325,6 +325,9 @@
       min-height: 0;
       border-top: 2px solid var(--lc-amber);
       background: var(--lc-bg);
+      /* Activity ticker is position: fixed at the bottom (140px tall) —
+         reserve space so the board + archive rail don't disappear behind it. */
+      padding-bottom: 140px;
     }
 
     .board {
