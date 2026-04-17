@@ -369,7 +369,11 @@
       border-radius: 10px;
       cursor: pointer;
       flex-shrink: 0;
-      min-height: 120px;
+      /* Fixed height keeps tabs uniform regardless of title length —
+         otherwise the vertical writing-mode lets long epic names blow the
+         tab up and push others off-screen. */
+      height: 170px;
+      overflow: hidden;
       transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
     }
 
@@ -395,9 +399,8 @@
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-height: 100%;
       min-height: 0;
-      flex: 1 1 auto;
+      flex: 1 1 0;
     }
 
     .archive-tab-count {
