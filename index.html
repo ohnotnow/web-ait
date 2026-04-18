@@ -327,6 +327,17 @@
       background: var(--lc-bg);
     }
 
+    /* Left column of the board-wrap: stacks the board (flex:1) above the
+       activity ticker (fixed 140px). The archive rail sits outside this
+       column so it can run the full page height. */
+    .board-column {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      min-height: 0;
+    }
+
     .board {
       flex: 1;
       display: flex;
@@ -336,10 +347,6 @@
       min-height: 0;
       min-width: 0;
       background: var(--lc-bg);
-      /* Activity ticker is position: fixed at the bottom (140px tall) — the
-         board leaves room so its columns don't hide behind it. The archive
-         rail handles this itself via .has-archive (see below). */
-      padding-bottom: 140px;
     }
 
     /* ══════════════════════════════════════════════
@@ -1335,21 +1342,12 @@
     /* Activity log — LCARS panel at the bottom */
     .activity-ticker {
       display: flex;
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      right: 0;
+      flex-shrink: 0;
       height: 140px;
       background: var(--lc-bg);
       border-top: 1px solid var(--lc-line);
-      z-index: 50;
       overflow: hidden;
-      transition: right 0.3s ease;
     }
-
-    /* When the archive rail has tabs, the activity bar pulls in from the
-       right so the rail can run full page height. Rail width is 50px. */
-    body.has-archive .activity-ticker { right: 50px; }
 
     .ticker-header {
       width: 140px;
@@ -1433,11 +1431,6 @@
     .ticker-claimed       .ticker-desc  { color: var(--lc-cyan); }
     .ticker-epic_complete .ticker-desc  { color: var(--lc-green); }
     .ticker-new_task      .ticker-desc  { color: var(--lc-purple); }
-
-    .board,
-    .all-clear {
-      margin-bottom: 140px;
-    }
   </style>
 </head>
 <body>
@@ -1455,7 +1448,9 @@
     <div class="summary-progress" id="summary-progress"></div>
   </div>
   <div class="board-wrap">
-    <div class="board" id="board"></div>
+    <div class="board-column" id="board-column">
+      <div class="board" id="board"></div>
+    </div>
     <div class="archive-rail" id="archive-rail"></div>
   </div>
   <div class="all-clear" id="all-clear">
@@ -1585,12 +1580,15 @@
     // Activity ticker — LCARS panel with amber header on the left
     const activityLog = [];
     {
+      // Guard against --hot re-running this block and stacking duplicates.
+      document.getElementById("activity-ticker")?.remove();
       const ticker = document.createElement("div");
       ticker.id = "activity-ticker";
       ticker.className = "activity-ticker";
       ticker.innerHTML = '<div class="ticker-header">Activity</div><div class="ticker-body" id="ticker-body"></div>';
-      document.body.appendChild(ticker);
+      document.getElementById("board-column").appendChild(ticker);
     }
+
 
     function renderActivityTicker() {
       const body = document.getElementById("ticker-body");
@@ -1758,7 +1756,6 @@
       // Clear board + archive rail for clean re-render
       boardEl.innerHTML = "";
       archiveRailEl.replaceChildren();
-      document.body.classList.remove("has-archive");
       const data = projectsData.get(projectId);
       if (data) render(data);
       renderSidebar();
@@ -2132,7 +2129,6 @@
         }
         elapsedTimerEl.classList.remove("visible");
         archiveRailEl.replaceChildren();
-      document.body.classList.remove("has-archive");
         return;
       } else {
         boardEl.style.display = "";
@@ -2276,8 +2272,6 @@
 
         archiveRailEl.appendChild(tab);
       }
-
-      document.body.classList.toggle("has-archive", entries.length > 0);
     }
 
     // ── Helpers for mini progress bars ──
