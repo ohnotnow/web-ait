@@ -347,7 +347,13 @@
       min-height: 0;
       min-width: 0;
       background: var(--lc-bg);
+      scrollbar-width: thin;
+      scrollbar-color: var(--lc-line) transparent;
     }
+
+    .board::-webkit-scrollbar { height: 6px; }
+    .board::-webkit-scrollbar-track { background: transparent; }
+    .board::-webkit-scrollbar-thumb { background: var(--lc-line); border-radius: 3px; }
 
     /* ══════════════════════════════════════════════
        Archive rail — completed epics as vertical tabs
@@ -899,7 +905,16 @@
       display: flex;
       flex: 1;
       min-height: 0;
+      min-width: 0;
+      overflow-x: auto;
+      overflow-y: hidden;
+      scrollbar-width: thin;
+      scrollbar-color: var(--lc-line) transparent;
     }
+
+    .initiative-section > .initiative-columns::-webkit-scrollbar { height: 6px; }
+    .initiative-section > .initiative-columns::-webkit-scrollbar-track { background: transparent; }
+    .initiative-section > .initiative-columns::-webkit-scrollbar-thumb { background: var(--lc-line); border-radius: 3px; }
 
     .initiative-section > .initiative-columns > .column,
     .initiative-section > .initiative-columns > .column-group {
