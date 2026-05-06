@@ -990,6 +990,52 @@
       flex-shrink: 0;
     }
 
+    /* Collapsed (quiet) initiative — thin vertical rib with rotated banner.
+       Mirrors .column.collapsed / .column-group.collapsed. */
+    .initiative-section.collapsed {
+      flex: 0 0 56px !important;
+      min-width: 56px;
+      max-width: 56px;
+      cursor: pointer;
+    }
+
+    .initiative-section.collapsed > .initiative-columns {
+      opacity: 0;
+      height: 0;
+      overflow: hidden;
+      transition: opacity 0.3s ease;
+    }
+
+    .initiative-section.collapsed > .initiative-banner {
+      writing-mode: vertical-lr;
+      text-orientation: mixed;
+      padding: 12px 8px;
+      margin: 8px 6px;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      height: calc(100% - 16px);
+      justify-content: flex-start;
+      border-radius: 24px 8px 8px 8px;
+    }
+
+    .initiative-section.collapsed .initiative-title {
+      max-height: 70%;
+      flex: 0 1 auto;
+    }
+
+    .initiative-section.collapsed .initiative-priority,
+    .initiative-section.collapsed .initiative-count,
+    .initiative-section.collapsed .initiative-status,
+    .initiative-section.collapsed .mini-progress {
+      writing-mode: horizontal-tb;
+    }
+
+    /* Label runs vertically alongside the title on the rib */
+    .initiative-section.collapsed .initiative-label {
+      letter-spacing: 3px;
+    }
+
     /* ══════════════════════════════════════════════
        All-clear state
        ══════════════════════════════════════════════ */
@@ -1289,6 +1335,7 @@
     body.focus-active .task-cancelled + .task-claimed { display: none; }
     body.focus-active .column.collapsed,
     body.focus-active .column-group.collapsed,
+    body.focus-active .initiative-section.collapsed,
     body.focus-active .archive-rail,
     body.focus-active .column.archive-open,
     body.focus-active .column-group.archive-open { display: none; }
@@ -2083,9 +2130,15 @@
         const entries = initEpics.map(buildEpicEntry);
         const activeEntries = entries.filter(e => !e.completed);
         const completedEntries = entries.filter(e => e.completed);
+        // An initiative is "quiet" when it has nothing active: explicitly
+        // closed/cancelled, or every epic inside is completed. Empty
+        // initiatives stay open so a freshly-planned one isn't hidden.
+        const initClosed = init.status === "closed" || init.status === "cancelled";
+        const quiet = initClosed || (entries.length > 0 && activeEntries.length === 0);
         initiativeSections.push({
           initiative: init,
           columns: [...activeEntries, ...completedEntries],
+          quiet,
         });
       }
 
@@ -2184,7 +2237,7 @@
         let el = existingById.get(item.id);
 
         if (item.type === "initiative") {
-          const { initiative, columns: initColumns } = item.section;
+          const { initiative, columns: initColumns, quiet } = item.section;
           if (el && el.classList.contains("initiative-section")) {
             updateInitiativeSection(el, initiative, initColumns);
           } else {
@@ -2192,6 +2245,7 @@
             el = createInitiativeSection(initiative, initColumns);
             boardEl.appendChild(el);
           }
+          el.classList.toggle("collapsed", !!quiet && !pinnedColumns.has(initiative.id));
         } else if (item.type === "group") {
           const { epic, subColumns, completed } = item.entry;
           if (el && el.classList.contains("column-group")) {
@@ -2620,7 +2674,27 @@
       const section = document.createElement("div");
       section.className = "initiative-section";
       section.dataset.id = initiative.id;
-      section.style.flex = `${Math.max(epicEntries.length, 1)} 1 0`;
+      // Weight horizontal space by active (non-completed) epics so a quiet
+      // sibling initiative doesn't crowd out one with live work. Empty
+      // initiatives still claim a base slot.
+      const activeCount = epicEntries.filter(e => !e.completed).length;
+      section.style.flex = `${Math.max(activeCount, 1)} 1 0`;
+
+      // Pin-to-open / unpin on click. Only the banner area toggles pin —
+      // clicks bubbling up from inner epic columns/tasks are ignored so a
+      // pinned-open section doesn't re-collapse just because someone clicked
+      // a task card inside it.
+      section.addEventListener("click", (e) => {
+        if (e.target.closest(".initiative-columns")) return;
+        if (section.classList.contains("collapsed")) {
+          pinnedColumns.add(initiative.id);
+          section.classList.remove("collapsed");
+        } else if (pinnedColumns.has(initiative.id)) {
+          pinnedColumns.delete(initiative.id);
+          const data = projectsData.get(activeProjectId);
+          if (data) render(data);
+        }
+      });
 
       const banner = createInitiativeBanner(initiative, epicEntries);
       section.appendChild(banner);
@@ -2646,7 +2720,8 @@
     }
 
     function updateInitiativeSection(section, initiative, epicEntries) {
-      section.style.flex = `${Math.max(epicEntries.length, 1)} 1 0`;
+      const activeCount = epicEntries.filter(e => !e.completed).length;
+      section.style.flex = `${Math.max(activeCount, 1)} 1 0`;
 
       // Update banner
       const oldBanner = section.querySelector(":scope > .initiative-banner");
