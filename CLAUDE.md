@@ -40,7 +40,7 @@ Data flow: poll timer -> read registration file (`~/.config/web-ait/projects.txt
 
 SSE named events: `projects` (list + statuses), `update` (single project data), `removed`.
 
-Routes: `/` (index.html), `/events` (SSE), `/api/projects` (DELETE to remove).
+Routes: `/` (index.html), `/events` (SSE), `/api/projects` (DELETE to remove), `/api/issue` (GET, `ait show` for the detail modal).
 
 Projects stored in `Map<string, ProjectState>` keyed by absolute path. PID file at `~/.config/web-ait/server.pid`.
 

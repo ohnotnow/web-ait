@@ -1,6 +1,6 @@
 # Technical Overview
 
-Last updated: 2026-03-14
+Last updated: 2026-09-10
 
 ## What This Is
 
@@ -123,6 +123,7 @@ On first connect the server sends the `projects` list, then an `update` for each
 | `/` | GET | Serves `index.html` |
 | `/events` | GET | SSE stream (named events) |
 | `/api/projects` | DELETE | Removes a project (query param: `path`) |
+| `/api/issue` | GET | Full detail for one issue via `ait show` (query params: `path`, `id`). Returns issue, children, blockers, blocks, notes. Powers the detail modal. |
 | `/api/projects/timer/reset` | POST | Rebases the elapsed-timer anchor for a project to now (query param: `path`). Persisted to `~/.config/web-ait/timer-resets.json`. |
 | `*` | — | 404 |
 
@@ -181,6 +182,14 @@ Switching projects clears the board and re-renders from cache.
 Column states: active (full-width, task list visible), collapsed (48px vertical strip, expands on hover), or pinned (user clicked a collapsed column to keep it open).
 
 Columns and tasks are matched by `data-id` / `data-task-id`, updated in place, reordered if needed, removed if stale. No layout thrash.
+
+#### Issue Detail Modal
+
+Every title on the board (initiative, epic, group, task) is a `<button class="issue-link">` carrying `data-issue-id`. One capture-phase click listener on the board opens the modal and stops the click reaching the column pin-toggle handlers; titles inside collapsed containers are left alone so click-to-pin still works there.
+
+`openIssue(id)` fetches `/api/issue` for the active project and renders a native `<dialog>` (`showModal()`): header with type/id, status and priority pills, then title, meta line, blocked-by / blocks / children rows (each a button that opens that issue), the description, and notes. Escape and backdrop click close it; the browser restores focus to the trigger.
+
+Descriptions and notes go through `renderMarkdown()`, a small hand-rolled renderer: fenced and indented code, headings (demoted two levels so the modal title stays the top heading), nested lists, blockquotes, tables, rules, paragraphs, and inline code/bold/italic/links. Everything is HTML-escaped before markup is added.
 
 ## Ports
 

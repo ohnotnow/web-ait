@@ -586,6 +586,27 @@ const server = Bun.serve({
       });
     }
 
+    if (url.pathname === "/api/issue" && req.method === "GET") {
+      const path = url.searchParams.get("path");
+      const id = url.searchParams.get("id") || "";
+      const state = path ? projects.get(path) : null;
+      if (!state || !/^[A-Za-z0-9_.][A-Za-z0-9_.-]*$/.test(id)) {
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      try {
+        const raw = await runAit(state.dbPath, ["show", id]);
+        return new Response(raw, { headers: { "Content-Type": "application/json" } });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: `ait show failed for ${id}` }), {
+          status: 502,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+    }
+
     if (url.pathname === "/") {
       return new Response(Bun.file(resolve(import.meta.dir, "index.html")), {
         headers: { "Content-Type": "text/html" },
