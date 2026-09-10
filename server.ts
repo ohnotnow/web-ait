@@ -1,4 +1,5 @@
 import { $ } from "bun";
+import { Database } from "bun:sqlite";
 import { resolve, basename } from "path";
 import { homedir } from "os";
 import { mkdir } from "node:fs/promises";
@@ -159,13 +160,34 @@ if (projectPaths.length > 0) {
   }
 }
 
+// --- Dependencies ---
+type Dep = { blocked: string; blocker: string };
+const depsWarned = new Set<string>();
+function readDeps(dbPath: string): Dep[] {
+  try {
+    const db = new Database(dbPath, { readonly: true });
+    try {
+      return db.query(`
+        SELECT COALESCE(b.public_id, b.legacy_id) AS blocked, COALESCE(k.public_id, k.legacy_id) AS blocker
+        FROM issue_dependencies d
+        JOIN issues b ON b.id = d.blocked_id
+        JOIN issues k ON k.id = d.blocker_id`).all() as Dep[];
+    } finally {
+      db.close();
+    }
+  } catch (e) {
+    if (!depsWarned.has(dbPath)) { depsWarned.add(dbPath); console.warn(`deps read failed for ${dbPath}:`, e); }
+    return [];
+  }
+}
+
 // --- Per-project state ---
 type ProjectState = {
   id: string;
   name: string;
   projectPath: string;
   dbPath: string;
-  cachedData: { issues: unknown; status: unknown; config: unknown } | null;
+  cachedData: { issues: unknown; status: unknown; config: unknown; deps?: Dep[] } | null;
   lastHash: string;
 };
 
@@ -315,7 +337,8 @@ async function pollProject(state: ProjectState): Promise<boolean> {
       runAit(state.dbPath, ["status"]),
     ]);
 
-    const hash = Bun.hash(issuesRaw + statusRaw).toString();
+    const deps = readDeps(state.dbPath);
+    const hash = Bun.hash(issuesRaw + statusRaw + JSON.stringify(deps)).toString();
     if (hash === state.lastHash) return false;
     state.lastHash = hash;
 
@@ -324,6 +347,7 @@ async function pollProject(state: ProjectState): Promise<boolean> {
       issues: JSON.parse(issuesRaw),
       status: JSON.parse(statusRaw),
       config,
+      deps,
     };
 
     return true;
@@ -418,6 +442,7 @@ async function poll(): Promise<void> {
         issues: state.cachedData!.issues,
         status: state.cachedData!.status,
         config: state.cachedData!.config,
+        deps: state.cachedData!.deps ?? [],
         timerResetAt: projectTimerResets.get(state.projectPath) || null,
         changedTaskIds,
         completedEpicIds,
@@ -453,6 +478,7 @@ function handleSSE(): Response {
               issues: state.cachedData.issues,
               status: state.cachedData.status,
               config: state.cachedData.config,
+              deps: state.cachedData.deps ?? [],
               timerResetAt: projectTimerResets.get(state.projectPath) || null,
             })}\n\n`,
           );
@@ -578,12 +604,36 @@ const server = Bun.serve({
           issues: state.cachedData.issues,
           status: state.cachedData.status,
           config: state.cachedData.config,
+          deps: state.cachedData.deps ?? [],
           timerResetAt: now,
         });
       }
       return new Response(JSON.stringify({ ok: true, timerResetAt: now }), {
         headers: { "Content-Type": "application/json" },
       });
+    }
+
+    // Full issue detail (description + notes) on demand; not part of the poll payload.
+    if (url.pathname === "/api/issue") {
+      const path = url.searchParams.get("path");
+      const id = url.searchParams.get("id");
+      const state = path ? projects.get(path) : null;
+      if (!state || !id || !/^[\w.-]+$/.test(id)) {
+        return new Response(JSON.stringify({ error: "not found" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      try {
+        return new Response(await runAit(state.dbPath, ["show", id]), {
+          headers: { "Content-Type": "application/json" },
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ error: String(e) }), {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
     }
 
     if (url.pathname === "/") {

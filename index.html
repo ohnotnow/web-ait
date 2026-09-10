@@ -1185,6 +1185,203 @@
     .reconnecting.visible { display: block; }
 
     /* ══════════════════════════════════════════════
+       Issue detail dialog
+       ══════════════════════════════════════════════ */
+    .task, .has-detail { cursor: pointer; }
+    .has-detail:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+    .issue-dialog {
+      width: min(720px, calc(100vw - 32px));
+      max-height: calc(100vh - 64px);
+      margin: auto; /* global reset zeroes margin; restore native centering */
+      padding: 0;
+      border: 0;
+      border-left: 4px solid var(--lc-amber);
+      border-radius: 12px;
+      background: var(--lc-bg-2);
+      color: var(--lc-ink);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .issue-dialog::backdrop { background: rgba(0,0,0,0.6); }
+
+    .issue-dialog-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--lc-line);
+    }
+
+    .issue-dialog-status {
+      margin-left: auto;
+      font-family: 'Barlow Condensed', 'Oswald', sans-serif;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 1px 8px;
+      border-radius: 4px;
+      border: 1px solid currentColor;
+    }
+
+    .issue-dialog-id {
+      font-family: 'Barlow Condensed', 'Oswald', sans-serif;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--lc-dim);
+    }
+
+    .issue-dialog-close {
+      background: none;
+      border: 0;
+      color: var(--lc-dim);
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 0 0 0 8px;
+    }
+
+    .issue-dialog-close:hover { color: var(--lc-ink); }
+
+    .issue-dialog-body {
+      padding: 14px 16px 18px;
+      overflow: auto;
+      max-height: calc(100vh - 64px - 48px);
+    }
+
+    .issue-dialog-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin: 0 0 12px;
+    }
+
+    .issue-dialog-meta {
+      color: var(--lc-dim);
+      font-size: 11px;
+      letter-spacing: 0.5px;
+      margin-bottom: 14px;
+    }
+
+    .issue-dialog h4 {
+      font-family: 'Barlow Condensed', 'Oswald', sans-serif;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--lc-amber);
+      margin: 18px 0 6px;
+    }
+
+    .md > :first-child { margin-top: 0; }
+    .md > :last-child { margin-bottom: 0; }
+    .md p, .md ul, .md ol, .md pre { margin: 0 0 10px; }
+    .md ul, .md ol { padding-left: 1.4em; }
+    .md li { margin: 2px 0; }
+    .md li input[type="checkbox"] { margin-right: 6px; accent-color: var(--lc-green); vertical-align: -1px; }
+    .md h1, .md h2, .md h3, .md h4, .md h5, .md h6 {
+      font-family: 'Barlow Condensed', 'Oswald', sans-serif;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      margin: 16px 0 6px;
+      color: var(--lc-ink);
+    }
+    .md h1 { font-size: 20px; }
+    .md h2 { font-size: 17px; color: var(--lc-cyan); }
+    .md h3 { font-size: 15px; }
+    .md h4, .md h5, .md h6 { font-size: 13px; text-transform: uppercase; }
+    .md code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: rgba(255,255,255,0.07);
+      color: var(--lc-amber);
+    }
+    .md pre {
+      padding: 10px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--lc-line);
+      background: rgba(0,0,0,0.25);
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+    .md pre code { padding: 0; background: none; color: var(--lc-ink); }
+    .md table { border-collapse: collapse; margin: 0 0 10px; width: 100%; font-size: 12px; }
+    .md th, .md td { border: 1px solid var(--lc-line); padding: 4px 8px; text-align: left; vertical-align: top; }
+    .md th {
+      font-family: 'Barlow Condensed', 'Oswald', sans-serif;
+      font-size: 12px;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: var(--lc-dim);
+      background: rgba(255,255,255,0.03);
+    }
+    .md a { color: var(--lc-cyan); }
+    .md strong { color: var(--lc-amber); font-weight: 600; }
+
+    @media (prefers-color-scheme: light) {
+      .md code { background: rgba(0,0,0,0.06); }
+      .md pre { background: rgba(0,0,0,0.03); }
+    }
+
+    .blocked-chip {
+      flex-shrink: 0;
+      font-family: 'Barlow Condensed', 'Oswald', sans-serif;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 1px;
+      padding: 0 6px;
+      border-radius: 4px;
+      color: var(--lc-rust);
+      border: 1px solid var(--lc-rust);
+      cursor: help;
+    }
+    .task.is-blocked { border-left-color: var(--lc-rust); }
+
+    .issue-link {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      padding: 4px 10px;
+      margin-top: 4px;
+      border-radius: 6px;
+      cursor: pointer;
+      background: rgba(255,255,255,0.03);
+    }
+    .issue-link:hover { background: rgba(255,255,255,0.08); }
+    .issue-link small { margin-left: auto; color: var(--lc-dim); font-size: 11px; white-space: nowrap; }
+    .issue-link-done { opacity: 0.5; }
+
+    @media (prefers-color-scheme: light) {
+      .issue-link { background: rgba(0,0,0,0.03); }
+      .issue-link:hover { background: rgba(0,0,0,0.07); }
+    }
+
+    .issue-note {
+      padding: 8px 10px;
+      margin-top: 8px;
+      border-left: 2px solid var(--lc-cyan);
+      background: rgba(255,255,255,0.03);
+      border-radius: 0 6px 6px 0;
+    }
+
+    .issue-note-time {
+      display: block;
+      color: var(--lc-dim);
+      font-size: 11px;
+      margin-bottom: 4px;
+    }
+
+    @media (prefers-color-scheme: light) {
+      .issue-note { background: rgba(0,0,0,0.03); }
+    }
+
+    /* ══════════════════════════════════════════════
        Project sidebar
        ══════════════════════════════════════════════ */
     .sidebar-overlay {
@@ -1527,6 +1724,23 @@
     <div id="elapsed-timer-value"></div>
   </div>
   <div class="reconnecting" id="reconnecting">reconnecting&hellip;</div>
+  <dialog class="issue-dialog" id="issue-dialog">
+    <div class="issue-dialog-head">
+      <span class="issue-dialog-id" id="issue-dialog-id"></span>
+      <span class="issue-dialog-status" id="issue-dialog-status"></span>
+      <span class="task-priority" id="issue-dialog-priority"></span>
+      <button class="issue-dialog-close" id="issue-dialog-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="issue-dialog-body">
+      <h3 class="issue-dialog-title" id="issue-dialog-title"></h3>
+      <div class="issue-dialog-meta" id="issue-dialog-meta"></div>
+      <div id="issue-dialog-deps"></div>
+      <h4>Description</h4>
+      <div class="md" id="issue-dialog-description"></div>
+      <h4>Notes</h4>
+      <div id="issue-dialog-notes"></div>
+    </div>
+  </dialog>
   <div class="sidebar-overlay" id="sidebar-overlay"></div>
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">Projects</div>
@@ -1858,6 +2072,7 @@
           issues: msg.issues,
           status: msg.status,
           config: msg.config,
+          deps: msg.deps || [],
         });
         if (msg.timerResetAt) projectTimerResets.set(msg.projectId, new Date(msg.timerResetAt));
         else projectTimerResets.delete(msg.projectId);
@@ -1962,6 +2177,7 @@
       const config = data.config || {};
       const counts = data.status?.counts || {};
       const issues = data.issues?.issues || [];
+      annotateDeps(issues, data.deps || []);
 
       // Track start time for elapsed timer — max(earliest claim, reset time).
       const resetAt = projectTimerResets.get(activeProjectId) || null;
@@ -2387,6 +2603,7 @@
       titleSpan.className = "column-title";
       titleSpan.title = epic.title || "";
       titleSpan.textContent = epic.title || "";
+      detailOnClick(titleSpan, epic.id);
 
       header.appendChild(statusSpan);
       header.appendChild(titleSpan);
@@ -2406,6 +2623,7 @@
 
       const miniBar = buildMiniProgress(children);
       if (miniBar) header.appendChild(miniBar);
+      syncBlockedChip(header, epic);
 
       col.appendChild(header);
 
@@ -2444,6 +2662,7 @@
       if (oldMini && newMini) oldMini.replaceWith(newMini);
       else if (newMini) header.appendChild(newMini);
       else if (oldMini) oldMini.remove();
+      syncBlockedChip(header, epic);
 
       // Reconcile tasks
       const tasksDiv = col.querySelector(".column-tasks");
@@ -2537,6 +2756,7 @@
       titleSpan.className = "group-title";
       titleSpan.title = epic.title || "";
       titleSpan.textContent = epic.title || "";
+      detailOnClick(titleSpan, epic.id);
       header.appendChild(titleSpan);
 
       if (epic.priority) {
@@ -2555,6 +2775,7 @@
 
       const miniBar = buildMiniProgress(allGroupTasks);
       if (miniBar) header.appendChild(miniBar);
+      syncBlockedChip(header, epic);
 
       group.appendChild(header);
 
@@ -2593,6 +2814,7 @@
       if (oldMini && newMini) oldMini.replaceWith(newMini);
       else if (newMini) header.appendChild(newMini);
       else if (oldMini) oldMini.remove();
+      syncBlockedChip(header, epic);
 
       // Reconcile sub-columns
       const columnsDiv = group.querySelector(":scope > .group-columns");
@@ -2643,6 +2865,7 @@
       titleSpan.className = "initiative-title";
       titleSpan.title = initiative.title || "";
       titleSpan.textContent = initiative.title || "";
+      detailOnClick(titleSpan, initiative.id);
       banner.appendChild(titleSpan);
 
       if (initiative.priority) {
@@ -2651,6 +2874,7 @@
         prSpan.textContent = initiative.priority;
         banner.appendChild(prSpan);
       }
+      syncBlockedChip(banner, initiative);
 
       // Gather all descendant tasks for a count
       const allTasks = epicEntries.flatMap(e =>
@@ -2790,6 +3014,11 @@
       statusSpan.textContent = STATUS_ICON[t.status] || "○";
       div.appendChild(statusSpan);
 
+      div.addEventListener("click", (e) => {
+        e.stopPropagation(); // don't toggle the enclosing column/group pin
+        openIssueDialog(t.id);
+      });
+
       const titleSpan = document.createElement("span");
       titleSpan.className = "task-title";
       titleSpan.title = t.title || "";
@@ -2811,6 +3040,7 @@
         div.appendChild(countSpan);
       }
 
+      syncBlockedChip(div, t);
       return div;
     }
 
@@ -2855,6 +3085,7 @@
       } else if (groupCount) {
         groupCount.remove();
       }
+      syncBlockedChip(el, t);
 
       // Update claimed span
       const parent = el.parentElement;
@@ -2872,6 +3103,146 @@
         claimedEl.remove();
       }
     }
+
+    // deps:start
+    // Attach blocker/blocked links to the issue objects so rows, headers and the dialog share them.
+    function annotateDeps(issues, deps) {
+      const byId = new Map(issues.map(i => [i.id, i]));
+      for (const i of issues) { i._blockers = []; i._blocks = []; }
+      for (const { blocked, blocker } of deps) {
+        const a = byId.get(blocked), b = byId.get(blocker);
+        if (a && b) { a._blockers.push(b); b._blocks.push(a); }
+      }
+    }
+    const depIsDone = (i) => i.status === "closed" || i.status === "cancelled";
+    // Only unfinished blockers on an unfinished issue actually block anything.
+    function openBlockers(i) { return depIsDone(i) ? [] : (i._blockers || []).filter(b => !depIsDone(b)); }
+    // deps:end
+
+    // Rust "⊘ n" chip on any row/header with open blockers; tooltip lists them.
+    function syncBlockedChip(el, issue) {
+      const blockers = openBlockers(issue);
+      let chip = el.querySelector(":scope > .blocked-chip");
+      if (!blockers.length) { chip?.remove(); el.classList.remove("is-blocked"); return; }
+      if (!chip) { chip = document.createElement("span"); chip.className = "blocked-chip"; el.appendChild(chip); }
+      chip.textContent = `⊘ ${blockers.length}`;
+      chip.title = "Blocked by:\n" + blockers.map(b => `${b.id}  ${b.title}`).join("\n");
+      el.classList.add("is-blocked");
+    }
+
+    function depSection(label, list) {
+      if (!list?.length) return "";
+      return `<h4>${label}</h4>` + list.map(b =>
+        `<div class="issue-link${depIsDone(b) ? " issue-link-done" : ""}" data-open-issue="${esc(b.id)}">` +
+        `<span class="s-${b.status}">${STATUS_ICON[b.status] || "○"}</span> ${esc(b.title)} <small>${esc(b.id)}</small></div>`
+      ).join("");
+    }
+
+    // Title text opens the detail dialog; the rest of the header keeps its pin/collapse click.
+    function detailOnClick(el, id) {
+      el.classList.add("has-detail");
+      el.addEventListener("click", (e) => { e.stopPropagation(); openIssueDialog(id); });
+    }
+
+    // ── Issue detail dialog ──
+    const issueDialogEl = document.getElementById("issue-dialog");
+    document.getElementById("issue-dialog-close").addEventListener("click", () => issueDialogEl.close());
+    issueDialogEl.addEventListener("click", (e) => {
+      if (e.target === issueDialogEl) return issueDialogEl.close(); // backdrop click
+      const link = e.target.closest("[data-open-issue]");
+      if (link) openIssueDialog(link.dataset.openIssue);
+    });
+
+    async function openIssueDialog(id) {
+      const data = projectsData.get(activeProjectId);
+      const issue = (data?.issues?.issues || []).find(i => i.id === id);
+      if (!issue) return;
+
+      document.getElementById("issue-dialog-id").textContent = `${issue.type} · ${issue.id}`;
+      const pr = document.getElementById("issue-dialog-priority");
+      pr.className = `task-priority pr-${issue.priority || ""}`;
+      pr.textContent = issue.priority || "";
+      const st = document.getElementById("issue-dialog-status");
+      st.className = `issue-dialog-status s-${issue.status}`;
+      st.textContent = `${STATUS_ICON[issue.status] || "○"} ${issue.status.replace("_", " ")}`;
+      document.getElementById("issue-dialog-title").textContent = issue.title || "";
+      document.getElementById("issue-dialog-meta").textContent = [
+        issue.claimed_by ? `claimed by ${issue.claimed_by}` : null,
+        `created ${issue.created_at.slice(0, 10)}`,
+        issue.closed_at ? `closed ${issue.closed_at.slice(0, 10)}` : null,
+      ].filter(Boolean).join("  ·  ");
+      document.getElementById("issue-dialog-deps").innerHTML = depSection("Blocked by", issue._blockers) + depSection("Blocks", issue._blocks);
+      document.getElementById("issue-dialog-description").innerHTML = issue.description ? md(issue.description) : "(none)";
+      const notesEl = document.getElementById("issue-dialog-notes");
+      notesEl.textContent = "loading…";
+      issueDialogEl.querySelector(".issue-dialog-body").scrollTop = 0;
+      if (!issueDialogEl.open) issueDialogEl.showModal();
+
+      try {
+        const res = await fetch(`/api/issue?path=${encodeURIComponent(activeProjectId)}&id=${encodeURIComponent(id)}`);
+        const detail = await res.json();
+        const notes = detail.notes || [];
+        notesEl.innerHTML = notes.length
+          ? notes.map(n => `<div class="issue-note md"><span class="issue-note-time">${esc(n.created_at.replace("T", " ").replace("Z", ""))}</span>${md(n.body)}</div>`).join("")
+          : "(none)";
+      } catch {
+        notesEl.textContent = "failed to load notes";
+      }
+    }
+
+    // md:start
+    // ponytail: markdown subset (headings, lists, checkboxes, fenced code, tables, bold/italic/code/links).
+    // Swap for `marked` if descriptions start using nested lists or blockquotes.
+    function md(src) {
+      const inline = (s) => esc(s)
+        .replace(/`([^`]+)`/g, "<code>$1</code>")
+        .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+        .replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, "$1<em>$2</em>")
+        .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+      const out = [];
+      const lines = src.split("\n");
+      let list = null, para = [];
+      const flushPara = () => { if (para.length) { out.push(`<p>${inline(para.join(" "))}</p>`); para = []; } };
+      const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        let m;
+        if (line.startsWith("```")) {
+          flushPara(); closeList();
+          const buf = [];
+          while (++i < lines.length && !lines[i].startsWith("```")) buf.push(lines[i]);
+          out.push(`<pre><code>${esc(buf.join("\n"))}</code></pre>`);
+        } else if (line.trim().startsWith("|") && /^\s*\|?\s*:?-{2,}/.test(lines[i + 1] || "")) {
+          flushPara(); closeList();
+          const cells = (l) => l.trim().replace(/^\||\|$/g, "").split(/(?<!\\)\|/).map(c => inline(c.trim().replace(/\\\|/g, "|")));
+          const head = cells(line).map(c => `<th>${c}</th>`).join("");
+          const rows = [];
+          i++; // skip separator row
+          while (i + 1 < lines.length && lines[i + 1].trim().startsWith("|")) {
+            rows.push(`<tr>${cells(lines[++i]).map(c => `<td>${c}</td>`).join("")}</tr>`);
+          }
+          out.push(`<table><thead><tr>${head}</tr></thead><tbody>${rows.join("")}</tbody></table>`);
+        } else if ((m = line.match(/^(#{1,6})\s+(.*)/))) {
+          flushPara(); closeList();
+          out.push(`<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`);
+        } else if ((m = line.match(/^\s*([-*]|\d+\.)\s+(.*)/))) {
+          flushPara();
+          const tag = /\d/.test(m[1]) ? "ol" : "ul";
+          if (list !== tag) { closeList(); out.push(`<${tag}>`); list = tag; }
+          const cb = m[2].match(/^\[([ xX])\]\s*(.*)/);
+          out.push(`<li>${cb ? `<input type="checkbox" disabled${cb[1] === " " ? "" : " checked"}>${inline(cb[2])}` : inline(m[2])}</li>`);
+        } else if (!line.trim()) {
+          flushPara(); closeList();
+        } else if (list && /^\s{2,}/.test(line)) {
+          out[out.length - 1] = out[out.length - 1].replace(/<\/li>$/, ` ${inline(line.trim())}</li>`);
+        } else {
+          closeList(); para.push(line);
+        }
+      }
+      flushPara(); closeList();
+      return out.join("");
+    }
+    // md:end
 
     function esc(s) {
       const d = document.createElement("div");
