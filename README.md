@@ -15,6 +15,7 @@ Monitor multiple projects from a single dashboard. Start the server once, then r
 - Multi-project sidebar with per-project status indicators (active / idle / done)
 - Auto light/dark mode based on your system preference
 - Auto-reconnects if the SSE connection drops
+- View individual tasks in a modal (thanks to [nandi95](https://github.com/nandi95) for the idea and initial PR)
 
 ## Prerequisites
 
