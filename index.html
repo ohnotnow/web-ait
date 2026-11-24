@@ -1497,8 +1497,10 @@
     /* ══════════════════════════════════════════════
        Issue detail modal
        ══════════════════════════════════════════════ */
-    /* Titles that open the modal: real buttons, styled as the text they replace */
-    .issue-link {
+    /* Titles that open the modal: real buttons, styled as the text they replace.
+       :where() keeps this reset at zero specificity so each title class's own
+       font and colour still win. */
+    :where(.issue-link) {
       background: none;
       border: 0;
       padding: 0;
@@ -2607,7 +2609,15 @@
       statusSpan.className = `column-status s-${epic.status}`;
       statusSpan.textContent = STATUS_ICON[epic.status] || "○";
 
-      const titleSpan = createIssueLink("column-title", epic);
+      // The Standalone column is a made-up grouping, not an issue ait can show
+      let titleSpan;
+      if (epic.id === "_standalone") {
+        titleSpan = document.createElement("span");
+        titleSpan.className = "column-title";
+        titleSpan.textContent = epic.title;
+      } else {
+        titleSpan = createIssueLink("column-title", epic);
+      }
 
       header.appendChild(statusSpan);
       header.appendChild(titleSpan);
